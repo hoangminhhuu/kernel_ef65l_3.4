@@ -3118,6 +3118,13 @@ static struct platform_device hdmi_msm_device = {
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
 
 #ifdef CONFIG_FB_MSM_MIPI_DSI
+#ifdef CONFIG_FB_MSM_MIPI_DSI_SONY
+static struct platform_device mipi_dsi_sony_panel_device = {
+	.name = "mipi_sony",
+	.id = 0,
+};
+#endif
+
 static struct platform_device mipi_dsi_toshiba_panel_device = {
 	.name = "mipi_toshiba",
 	.id = 0,
@@ -4254,6 +4261,9 @@ static struct platform_device *rumi_sim_devices[] __initdata = {
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
 	&hdmi_msm_device,
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
+#ifdef CONFIG_FB_MSM_MIPI_DSI_SONY
+	&mipi_dsi_sony_panel_device,
+#endif
 #ifdef CONFIG_MSM_CAMERA
 #ifndef CONFIG_MSM_CAMERA_V4L2
 #ifdef CONFIG_MT9E013

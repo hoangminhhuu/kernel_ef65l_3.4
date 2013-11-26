@@ -1351,6 +1351,7 @@ static struct msm_gpiomux_config msm8x60_lcdc_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &lcdc_suspend_cfg,
 		},
 	},
+#ifndef CONFIG_FB_MSM_MIPI_DSI_SONY
 	/* lcdc_blu6 */
 	{
 		.gpio = 21,
@@ -1359,6 +1360,7 @@ static struct msm_gpiomux_config msm8x60_lcdc_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &lcdc_suspend_cfg,
 		},
 	},
+#endif
 	/* lcdc_blu5 */
 	{
 		.gpio = 22,
