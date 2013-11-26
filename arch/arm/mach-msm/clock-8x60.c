@@ -3615,8 +3615,12 @@ static struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("mem_clk",		rpm_msg_ram_p_clk.c,	""),
 	CLK_LOOKUP("cam_clk",		cam_clk.c,		NULL),
 	CLK_LOOKUP("csi_clk",		csi0_clk.c,		NULL),
+#ifdef CONFIG_PANTECH_CAMERA_MT9D113
+	CLK_LOOKUP("csi_clk",		csi1_clk.c,	  "msm_camera_mt9d113.0"),
+#else
 	CLK_LOOKUP("csi_clk",		csi1_clk.c, "msm_camera_ov7692.0"),
 	CLK_LOOKUP("csi_clk",		csi1_clk.c, "msm_camera_ov9726.0"),
+#endif	
 	CLK_LOOKUP("csi_clk",		csi1_clk.c, "msm_csic.1"),
 	CLK_LOOKUP("csi_src_clk",	csi_src_clk.c,		NULL),
 	CLK_LOOKUP("byte_clk",	dsi_byte_clk.c,		"mipi_dsi.1"),
@@ -3653,8 +3657,12 @@ static struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("vpe_clk",		vpe_clk.c,		NULL),
 	CLK_LOOKUP("core_clk",		vpe_clk.c,	"footswitch-8x60.9"),
 	CLK_LOOKUP("csi_vfe_clk",	csi0_vfe_clk.c,		NULL),
+#ifdef CONFIG_PANTECH_CAMERA_MT9D113
+	CLK_LOOKUP("csi_vfe_clk",	csi1_vfe_clk.c, "msm_camera_mt9d113.0"),
+#else
 	CLK_LOOKUP("csi_vfe_clk",	csi1_vfe_clk.c, "msm_camera_ov7692.0"),
 	CLK_LOOKUP("csi_vfe_clk",	csi1_vfe_clk.c, "msm_camera_ov9726.0"),
+#endif	
 	CLK_LOOKUP("csi_vfe_clk",	csi1_vfe_clk.c, "msm_csic.1"),
 	CLK_LOOKUP("vfe_clk",		vfe_clk.c,		NULL),
 	CLK_LOOKUP("core_clk",		vfe_clk.c,	"footswitch-8x60.8"),
@@ -3667,8 +3675,12 @@ static struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("bus_clk",		vpe_axi_clk.c,	 "footswitch-8x60.9"),
 	CLK_LOOKUP("arb_clk",		amp_p_clk.c,		"mipi_dsi.1"),
 	CLK_LOOKUP("csi_pclk",		csi0_p_clk.c,		NULL),
+#ifdef CONFIG_PANTECH_CAMERA_MT9D113	
+    CLK_LOOKUP("csi_pclk",		csi1_p_clk.c, "msm_camera_mt9d113.0"),
+#else
 	CLK_LOOKUP("csi_pclk",		csi1_p_clk.c, "msm_camera_ov7692.0"),
 	CLK_LOOKUP("csi_pclk",		csi1_p_clk.c, "msm_camera_ov9726.0"),
+#endif	
 	CLK_LOOKUP("csi_pclk",		csi1_p_clk.c,		"msm_csic.1"),
 	CLK_LOOKUP("master_iface_clk",	dsi_m_p_clk.c,		"mipi_dsi.1"),
 	CLK_LOOKUP("slave_iface_clk",	dsi_s_p_clk.c,		"mipi_dsi.1"),

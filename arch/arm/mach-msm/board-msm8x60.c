@@ -1557,7 +1557,11 @@ int msm_cam_gpio_tbl[] = {
 	32,/*CAMIF_MCLK*/
 	47,/*CAMIF_I2C_DATA*/
 	48,/*CAMIF_I2C_CLK*/
+#ifndef CONFIG_PANTECH_CAMERA_HW
+	/* You have to configure common gpios here, and should configure other
+	 * gpios in sensor drivers. */
 	105,/*STANDBY*/
+#endif
 };
 
 enum msm_cam_stat{
@@ -1666,6 +1670,45 @@ static void config_camera_off_gpios_fluid(void)
 	gpio_set_value_cansleep(GPIO_EXT_CAMIF_PWR_EN, 0);
 	gpio_free(GPIO_EXT_CAMIF_PWR_EN);
 }
+
+#ifdef CONFIG_PANTECH_CAMERA_HW
+static int config_camera_on_gpios_main_cam(void)
+{
+	int rc = 0;
+
+	rc = config_gpio_table(MSM_CAM_ON);
+	if (rc < 0) {
+		printk(KERN_ERR "%s: CAMSENSOR gpio table request"
+				"failed\n", __func__);
+		return rc;
+	}
+	return rc;
+}
+
+static void config_camera_off_gpios_main_cam(void)
+{
+	config_gpio_table(MSM_CAM_OFF);
+}
+
+static int config_camera_on_gpios_sub_cam(void)
+{
+	int rc = 0;
+
+	rc = config_gpio_table(MSM_CAM_ON);
+	if (rc < 0) {
+		printk(KERN_ERR "%s: CAMSENSOR gpio table request"
+				"failed\n", __func__);
+		return rc;
+	}
+	return rc;
+}
+
+static void config_camera_off_gpios_sub_cam(void)
+{
+	config_gpio_table(MSM_CAM_OFF);
+}
+#endif
+
 static int config_camera_on_gpios(void)
 {
 	int rc = 0;
@@ -2149,6 +2192,34 @@ static struct msm_bus_scale_pdata cam_bus_client_pdata = {
 };
 #endif
 
+#ifdef CONFIG_PANTECH_CAMERA_HW
+struct msm_camera_device_platform_data msm_camera_device_data_main_cam = {
+	.camera_gpio_on  = config_camera_on_gpios_main_cam,
+	.camera_gpio_off = config_camera_off_gpios_main_cam,
+	.ioext.csiphy = 0x04800000,
+	.ioext.csisz  = 0x00000400,
+	.ioext.csiirq = CSI_0_IRQ,
+	.ioclk.mclk_clk_rate = 24000000,
+	.ioclk.vfe_clk_rate  = 228570000,
+#ifdef CONFIG_MSM_BUS_SCALING
+	.cam_bus_scale_table = &cam_bus_client_pdata,
+#endif
+};
+
+struct msm_camera_device_platform_data msm_camera_device_data_sub_cam = {
+	.camera_gpio_on  = config_camera_on_gpios_sub_cam,
+	.camera_gpio_off = config_camera_off_gpios_sub_cam,
+	.ioext.csiphy = 0x04900000,
+	.ioext.csisz  = 0x00000400,
+	.ioext.csiirq = CSI_1_IRQ,
+	.ioclk.mclk_clk_rate = 24000000,
+	.ioclk.vfe_clk_rate  = 228570000,
+#ifdef CONFIG_MSM_BUS_SCALING
+	.cam_bus_scale_table = &cam_bus_client_pdata,
+#endif
+};
+#endif
+
 struct msm_camera_device_platform_data msm_camera_device_data = {
 	.camera_gpio_on  = config_camera_on_gpios,
 	.camera_gpio_off = config_camera_off_gpios,
@@ -2389,6 +2460,51 @@ struct platform_device msm_camera_sensor_qs_s5k4e1 = {
 	},
 };
 #endif
+
+#ifdef CONFIG_PANTECH_CAMERA_CE1612
+static struct msm_camera_sensor_flash_data flash_ce1612 = {
+	.flash_type	= MSM_CAMERA_FLASH_LED,
+	.flash_src	= &msm_flash_src
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_ce1612_data = {
+	.sensor_name	= "ce1612",
+	.pdata		= &msm_camera_device_data_main_cam,
+	.resource	= msm_camera_resources,
+	.num_resources	= ARRAY_SIZE(msm_camera_resources),
+	.flash_data	= &flash_ce1612,
+	.csi_if		= 1
+};
+struct platform_device msm_camera_sensor_ce1612 = {
+	.name	= "msm_camera_ce1612",
+	.dev	= {
+		.platform_data = &msm_camera_sensor_ce1612_data,
+	},
+};
+#endif
+
+#ifdef CONFIG_PANTECH_CAMERA_MT9D113
+static struct msm_camera_sensor_flash_data flash_mt9d113 = {
+	.flash_type	= MSM_CAMERA_FLASH_NONE,
+	.flash_src	= &msm_flash_src
+};
+
+static struct msm_camera_sensor_info msm_camera_sensor_mt9d113_data = {
+	.sensor_name	= "mt9d113",
+	.pdata		= &msm_camera_device_data_sub_cam,
+	.resource	= msm_camera_resources,
+	.num_resources	= ARRAY_SIZE(msm_camera_resources),
+	.flash_data	= &flash_mt9d113,
+	.csi_if		= 1
+};
+struct platform_device msm_camera_sensor_mt9d113 = {
+	.name	= "msm_camera_mt9d113",
+	.dev	= {
+		.platform_data = &msm_camera_sensor_mt9d113_data,
+	},
+};
+#endif
+
 static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
 	#ifdef CONFIG_MT9E013
 	{
@@ -2415,6 +2531,18 @@ static struct i2c_board_info msm_camera_boardinfo[] __initdata = {
 		I2C_BOARD_INFO("qs_s5k4e1", 0x20),
 	},
 	#endif
+#ifdef CONFIG_PANTECH_CAMERA_CE1612
+	{
+		I2C_BOARD_INFO("ce1612", 0x7C >> 1),
+	},
+#endif
+
+#ifdef CONFIG_PANTECH_CAMERA_MT9D113
+	{
+		I2C_BOARD_INFO("mt9d113", 0x78 >> 1),
+	},
+#endif
+
 };
 
 static struct i2c_board_info msm_camera_dragon_boardinfo[] __initdata = {
@@ -2465,7 +2593,11 @@ static struct msm_i2c_platform_data msm_gsbi3_qup_i2c_pdata = {
 };
 
 static struct msm_i2c_platform_data msm_gsbi4_qup_i2c_pdata = {
+#if defined(CONFIG_PANTECH_CAMERA_HW)
+	.clk_freq = 384000,
+#else
 	.clk_freq = 100000,
+#endif
 	.src_clk_rate = 24000000,
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
@@ -4113,23 +4245,39 @@ static struct rpm_regulator_init_data rpm_regulator_init_data[] = {
 	RPM_LDO(PM8058_L2,  0, 1, 0, 1800000, 2600000, LDO300HMIN),
 #endif	
 	RPM_LDO(PM8058_L3,  0, 1, 0, 1800000, 1800000, LDO150HMIN),
+#ifdef CONFIG_PANTECH_CAMERA
+    RPM_LDO(PM8058_L4,	0, 1, 0, 2800000, 2800000,	LDO50HMIN),
+#else
 	RPM_LDO(PM8058_L4,  0, 1, 0, 2850000, 2850000,  LDO50HMIN),
+#endif	
 	RPM_LDO(PM8058_L5,  0, 1, 0, 2850000, 2850000, LDO300HMIN),
 	RPM_LDO(PM8058_L6,  0, 1, 0, 3000000, 3600000,  LDO50HMIN),
 	RPM_LDO(PM8058_L7,  0, 1, 0, 1800000, 1800000,  LDO50HMIN),
 	RPM_LDO(PM8058_L8,  0, 1, 0, 2900000, 3050000, LDO300HMIN),
+#ifdef CONFIG_PANTECH_CAMERA
+    RPM_LDO(PM8058_L9,	0, 1, 0, 2800000, 2800000, LDO300HMIN),
+#else
 	RPM_LDO(PM8058_L9,  0, 1, 0, 1800000, 1800000, LDO300HMIN),
+#endif	
 	RPM_LDO(PM8058_L10, 0, 1, 0, 2600000, 2600000, LDO300HMIN),
 	RPM_LDO(PM8058_L11, 0, 1, 0, 1500000, 1500000, LDO150HMIN),
 	RPM_LDO(PM8058_L12, 0, 1, 0, 2900000, 2900000, LDO150HMIN),
 	RPM_LDO(PM8058_L13, 0, 1, 0, 2050000, 2050000, LDO300HMIN),
 	RPM_LDO(PM8058_L14, 0, 0, 0, 2850000, 2850000, LDO300HMIN),
+#ifdef CONFIG_PANTECH_CAMERA
+    RPM_LDO(PM8058_L15, 0, 1, 0, 2800000, 2800000, LDO300HMIN),
+#else
 	RPM_LDO(PM8058_L15, 0, 1, 0, 2850000, 2850000, LDO300HMIN),
+#endif	
 	RPM_LDO(PM8058_L16, 1, 1, 0, 1800000, 1800000, LDO300HMIN),
 	RPM_LDO(PM8058_L17, 0, 1, 0, 2600000, 2600000, LDO150HMIN),
 	RPM_LDO(PM8058_L18, 0, 1, 0, 2200000, 2200000, LDO150HMIN),
 	RPM_LDO(PM8058_L19, 0, 1, 0, 2500000, 2500000, LDO150HMIN),
+#ifdef CONFIG_PANTECH_CAMERA
+    RPM_LDO(PM8058_L20, 0, 1, 0, 2800000, 2800000, LDO150HMIN),
+#else
 	RPM_LDO(PM8058_L20, 0, 1, 0, 1800000, 1800000, LDO150HMIN),
+#endif
 	RPM_LDO(PM8058_L21, 1, 1, 0, 1200000, 1200000, LDO150HMIN),
 	RPM_LDO(PM8058_L22, 0, 1, 0, 1150000, 1150000, LDO300HMIN),
 	RPM_LDO(PM8058_L23, 0, 1, 0, 1200000, 1200000, LDO300HMIN),
@@ -4153,21 +4301,37 @@ static struct rpm_regulator_init_data rpm_regulator_init_data[] = {
 	RPM_LDO(PM8901_L1,  0, 1, 0, 3300000, 3300000, LDO300HMIN),
 	RPM_LDO(PM8901_L2,  0, 1, 0, 2850000, 3300000, LDO300HMIN),
 	RPM_LDO(PM8901_L3,  0, 1, 0, 3300000, 3300000, LDO300HMIN),
+#ifdef CONFIG_PANTECH_CAMERA
+    RPM_LDO(PM8901_L4,	0, 1, 0, 2800000, 2800000, LDO300HMIN),
+#else
 	RPM_LDO(PM8901_L4,  0, 1, 0, 2600000, 2600000, LDO300HMIN),
+#endif	
 	RPM_LDO(PM8901_L5,  0, 1, 0, 2850000, 2850000, LDO300HMIN),
 	RPM_LDO(PM8901_L6,  0, 1, 0, 2200000, 2200000, LDO300HMIN),
 
 	/*	 ID       a_on pd ss min_uV   max_uV   init_ip   freq */
+#ifdef CONFIG_PANTECH_CAMERA
+    RPM_SMPS(PM8901_S2, 0, 1, 0, 1500000, 1500000, FTS_HMIN, 1p60),
+#else
 	RPM_SMPS(PM8901_S2, 0, 1, 0, 1300000, 1300000, FTS_HMIN, 1p60),
+#endif	
 	RPM_SMPS(PM8901_S3, 0, 1, 0, 1100000, 1100000, FTS_HMIN, 1p60),
 	RPM_SMPS(PM8901_S4, 0, 1, 0, 1225000, 1225000, FTS_HMIN, 1p60),
 
 	/*	ID        a_on pd ss */
 	RPM_VS(PM8901_LVS0, 1, 1, 0),
+#ifdef CONFIG_PANTECH_CAMERA	
+    RPM_VS(PM8901_LVS1, 0, 1, 0),
+#else
 	RPM_VS(PM8901_LVS1, 0, 1, 0),
+#endif	
 	RPM_VS(PM8901_LVS2, 0, 1, 0),
 	RPM_VS(PM8901_LVS3, 0, 1, 0),
+#ifdef CONFIG_PANTECH_CAMERA
+    RPM_VS(PM8901_MVS0, 0, 1, 0),
+#else
 	RPM_VS(PM8901_MVS0, 0, 1, 0),
+#endif
 
 	/*     ID         a_on pin_func pin_ctrl */
 	RPM_PC(PM8058_L8,   0, SLEEP_B, RPM_VREG_PIN_CTRL_NONE),
@@ -5345,6 +5509,12 @@ static struct platform_device *surf_devices[] __initdata = {
 #endif
 #ifdef CONFIG_QS_S5K4E1
 	&msm_camera_sensor_qs_s5k4e1,
+#endif
+#ifdef CONFIG_PANTECH_CAMERA_CE1612
+	&msm_camera_sensor_ce1612,
+#endif
+#ifdef CONFIG_PANTECH_CAMERA_MT9D113
+	&msm_camera_sensor_mt9d113,
 #endif
 #ifdef CONFIG_VX6953
 	&msm_camera_sensor_vx6953,
