@@ -422,6 +422,13 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	},
 };
 
+#ifdef CONFIG_INPUT_PANTECH_EARJACK // N1037 20120330 for Earjack 
+static struct platform_device pantech_earjack_device = {
+    .name   = "pantech_earjack",
+    .id     = -1,
+};
+#endif
+
 /*
  * Consumer specific regulator names:
  *			 regulator name		consumer dev_name
@@ -4389,7 +4396,11 @@ static struct rpm_regulator_init_data rpm_regulator_init_data[] = {
 	RPM_LDO(PM8058_L5,  0, 1, 0, 2850000, 2850000, LDO300HMIN),
 	RPM_LDO(PM8058_L6,  0, 1, 0, 3000000, 3600000,  LDO50HMIN),
 	RPM_LDO(PM8058_L7,  0, 1, 0, 1800000, 1800000,  LDO50HMIN),
+#if defined(CONFIG_INPUT_PANTECH_EARJACK)
+	RPM_LDO(PM8058_L8,  0, 1, 0, 2700000, 2700000, LDO300HMIN), 
+#else
 	RPM_LDO(PM8058_L8,  0, 1, 0, 2900000, 3050000, LDO300HMIN),
+#endif
 #ifdef CONFIG_PANTECH_CAMERA
     RPM_LDO(PM8058_L9,	0, 1, 0, 2800000, 2800000, LDO300HMIN),
 #else
@@ -4577,6 +4588,9 @@ static struct platform_device *rumi_sim_devices[] __initdata = {
 	&msm_kgsl_3d0,
 	&msm_kgsl_2d0,
 	&msm_kgsl_2d1,
+#ifdef CONFIG_INPUT_PANTECH_EARJACK // N1037 20120330 for ICS EarJack 
+	&pantech_earjack_device,
+#endif	
 	&lcdc_samsung_panel_device,
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
 	&hdmi_msm_device,
@@ -5235,8 +5249,11 @@ static void pmic8058_xoadc_mpp_config(void)
 {
 	int rc, i;
 	struct pm8xxx_mpp_init_info xoadc_mpps[] = {
+#if defined(CONFIG_INPUT_PANTECH_EARJACK) // N1037 20120330 for ICS EarJack 
+#else        
 		PM8058_MPP_INIT(XOADC_MPP_3, A_INPUT, PM8XXX_MPP_AIN_AMUX_CH5,
 							AOUT_CTRL_DISABLE),
+#endif							
 		PM8058_MPP_INIT(XOADC_MPP_5, A_INPUT, PM8XXX_MPP_AIN_AMUX_CH9,
 							AOUT_CTRL_DISABLE),
 		PM8058_MPP_INIT(XOADC_MPP_7, A_INPUT, PM8XXX_MPP_AIN_AMUX_CH6,
@@ -5614,6 +5631,9 @@ static struct platform_device *surf_devices[] __initdata = {
 #endif /*CONFIG_ANDROID_PMEM*/
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
+#endif
+#ifdef CONFIG_INPUT_PANTECH_EARJACK // N1037 20120330 for ICS EarJack 
+	&pantech_earjack_device,
 #endif
 	&msm_fb_device,
 	&msm_kgsl_3d0,
