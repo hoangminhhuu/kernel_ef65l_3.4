@@ -6031,6 +6031,18 @@ static int pm8058_gpios_init(void)
 	return 0;
 }
 
+#if defined(CONFIG_MACH_MSM8X60_EF65L) 
+static const unsigned int ffa_keymap[] = {
+	KEY(0, 0, KEY_VOLUMEUP), 	// DRV1, SNS1 : Volume Up
+	KEY(0, 1, KEY_VOLUMEDOWN), 	// DRV1, SNS2 : Volume Down
+	KEY(0, 2, KEY_SEARCH), 		// DRV1, SNS3 : Search
+	KEY(1, 0, KEY_VOLUMEDOWN),	// DRV2, SNS3 : Nothing
+	KEY(1, 1, KEY_UNKNOWN), 	// DRV2, SNS2 : Nothing
+	KEY(1, 2, KEY_UNKNOWN), 	// DRV2, SNS3 : Nothing
+	KEY(1, 3, KEY_UNKNOWN),
+	KEY(2, 3, KEY_UNKNOWN),
+};
+#else
 static const unsigned int ffa_keymap[] = {
 	KEY(0, 0, KEY_FN_F1),	 /* LS - PUSH1 */
 	KEY(0, 1, KEY_UP),	 /* NAV - UP */
@@ -6056,6 +6068,7 @@ static const unsigned int ffa_keymap[] = {
 	KEY(5, 3, KEY_BACK),	  /* Left switch: MIC */
 	KEY(5, 4, KEY_MENU),	  /* Center switch: MIC */
 };
+#endif
 
 static const unsigned int dragon_keymap[] = {
 	KEY(0, 0, KEY_MENU),
@@ -6093,8 +6106,13 @@ static struct matrix_keymap_data ffa_keymap_data = {
 };
 
 static struct pm8xxx_keypad_platform_data ffa_keypad_data = {
+#if defined(CONFIG_MACH_MSM8X60_EF65L)    
+    	.input_name		= "surf_keypad",
+	.input_phys_device	= "surf_keypad/input0",
+#else	
 	.input_name		= "ffa-keypad",
 	.input_phys_device	= "ffa-keypad/input0",
+#endif
 	.num_rows		= 6,
 	.num_cols		= 5,
 	.rows_gpio_start	= PM8058_GPIO_PM_TO_SYS(8),
