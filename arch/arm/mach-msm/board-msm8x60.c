@@ -50,6 +50,9 @@
 #ifdef CONFIG_SND_SOC_WM8903
 #include <sound/wm8903.h>
 #endif
+#ifdef	CONFIG_INPUT_SENSOR
+#include "msm8x60-sky-sensor.h"
+#endif
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/setup.h>
@@ -964,6 +967,132 @@ static struct platform_device isp1763_device = {
 };
 #endif
 
+// added by hkkwon@PS2
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+static void mpu3050_power_up(void)
+{
+	struct regulator *vdd = regulator_get(NULL, "8058_l10");
+	struct regulator *vldgc = regulator_get(NULL, "8058_lvs1");
+	int rc, retry, retrylevel;
+
+	//      retrylevel 0 : failed both vdd and vldgc
+	//      retrylevel 1 : vdd is success but vldgc is fail
+	//      retrylevel 2 : success both vdd and vldgc
+
+	retry = 3;
+	retrylevel = 0;
+	do {
+		retry--;
+		printk(":::::: retry = %d / retrylevel = %d\n", retry, retrylevel);
+		if(retrylevel == 1) {
+			if(IS_ERR(vdd)) {
+				rc = PTR_ERR(vdd);
+				printk(KERN_ERR "<1-1> %s: regulator get of failed (%d)\n", __func__, rc);
+			}
+			else {
+				rc = regulator_disable(vdd);
+				if (rc) {
+					printk(KERN_ERR "<1-2> %s: vreg disable failed (%d)\n",__func__, rc);
+				}
+				else {
+					retrylevel = 0;
+				}
+			}
+		}
+
+		if(retrylevel == 0) {
+			vdd = regulator_get(NULL, "8058_l10");
+			if(IS_ERR(vdd)) {
+				rc = PTR_ERR(vdd);
+				printk(KERN_ERR "<2-1> %s: regulator get of failed (%d)\n", __func__, rc);
+			}
+			else {
+				//---ls5 team shs : 2011.11.18
+				rc = regulator_set_voltage(vdd, 2600000, 2600000);
+
+				if (rc) {
+					printk(KERN_ERR "<2-2> %s: vreg set level failed (%d)\n", __func__, rc);
+				}
+				else {
+					rc = regulator_enable(vdd);
+					if (rc) {
+						printk(KERN_ERR "<2-3> %s: vreg enable failed (%d)\n",__func__, rc);
+					}
+					else {
+						retrylevel = 1;
+					}
+				}
+			}
+		}
+
+		if(retrylevel == 1) {
+			mdelay(10);
+			vldgc = regulator_get(NULL, "8058_lvs1");
+			if(IS_ERR(vldgc)) {
+				rc = PTR_ERR(vldgc);
+				printk(KERN_ERR "<3-1> %s: regulator get of failed (%d)\n", __func__, rc);
+			}
+			rc = regulator_enable(vldgc);
+			if (rc) {
+				printk(KERN_ERR "<3-2> %s: vreg enable failed (%d)\n",__func__, rc);
+			}
+			else {
+				regulator_put(vldgc);
+				retrylevel = 2;
+				retry = 0;
+			}
+		}
+		mdelay(100);
+	} while(retry);
+
+	if(retrylevel == 1) {
+		vdd = regulator_get(NULL, "8058_l10");
+		if(IS_ERR(vdd)) {
+			rc = PTR_ERR(vdd);
+			printk(KERN_ERR "<4> %s: regulator get of failed (%d)\n", __func__, rc);
+		}
+		rc = regulator_disable(vdd);
+		if (rc) {
+			printk(KERN_ERR "<4> %s: vreg disable failed (%d)\n",__func__, rc);
+		}
+		else {
+			retrylevel = 0;
+		}
+	}
+
+	if(retrylevel == 2) {
+		printk("<5> %s OK\n", __func__);
+	}
+}
+#endif
+//---	edited by hkkwon@PS2
+#if defined(CONFIG_EF65L_SENSORS_APDS9900_HW) || defined(CONFIG_EF65L_SENSORS_APDS9900_SW)
+static void proximity_sensor_power_up(void)
+{
+	struct regulator *vdd = regulator_get(NULL, "8058_l17");
+	int rc;
+
+	if(IS_ERR(vdd)) {
+		rc = PTR_ERR(vdd);
+		printk(KERN_ERR "<prox> %s: regulator get of failed (%d)\n", __func__, rc);
+	}
+	else {
+		rc = regulator_set_voltage(vdd, 2600000, 2600000);
+		if (rc) {
+			printk(KERN_ERR "<prox> %s: vreg set level failed (%d)\n", __func__, rc);
+		}
+		else {
+			rc = regulator_enable(vdd);
+			if (rc) {
+				printk(KERN_ERR "<prox> %s: vreg enable failed (%d)\n",__func__, rc);
+			}
+			else{
+				printk("<5> %s OK\n", __func__);
+			}
+		}
+	}
+}
+#endif
 #if defined(CONFIG_USB_MSM_72K) || defined(CONFIG_USB_EHCI_MSM_72K)
 static struct msm_otg_platform_data msm_otg_pdata;
 static struct regulator *ldo6_3p3;
@@ -2601,6 +2730,13 @@ static struct msm_i2c_platform_data msm_gsbi4_qup_i2c_pdata = {
 	.src_clk_rate = 24000000,
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+static struct msm_i2c_platform_data msm_gsbi5_qup_i2c_pdata = {
+	.clk_freq = 400000,
+	.src_clk_rate = 24000000,
+	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
+};
+#endif
 
 static struct msm_i2c_platform_data msm_gsbi7_qup_i2c_pdata = {
 	.clk_freq = 100000,
@@ -4291,7 +4427,11 @@ static struct rpm_regulator_init_data rpm_regulator_init_data[] = {
 
 	/*     ID         a_on pd ss */
 	RPM_VS(PM8058_LVS0, 0, 1, 0),
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+	RPM_VS(PM8058_LVS1, 0, 1, 1800000),
+#else
 	RPM_VS(PM8058_LVS1, 0, 1, 0),
+#endif
 
 	/*	ID        a_on pd ss min_uV   max_uV */
 	RPM_NCP(PM8058_NCP, 0, 1, 0, 1800000, 1800000),
@@ -5428,6 +5568,9 @@ static struct platform_device *surf_devices[] __initdata = {
 	&msm_gsbi8_qup_i2c_device,
 	&msm_gsbi9_qup_i2c_device,
 	&msm_gsbi12_qup_i2c_device,
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+	&msm_gsbi5_qup_i2c_device,
+#endif
 #endif
 #ifdef CONFIG_SERIAL_MSM_HS
 	&msm_device_uart_dm1,
@@ -5571,6 +5714,9 @@ static struct platform_device *surf_devices[] __initdata = {
 
 	&msm_tsens_device,
 	&msm8660_rpm_device,
+#ifdef CONFIG_INPUT_SENSOR
+	&msm_device_sensor_proximity,
+#endif
 #ifdef CONFIG_ION_MSM
 	&ion_dev,
 #endif
@@ -7652,6 +7798,14 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		ARRAY_SIZE(msm_isa1200_board_info),
 	},
 #endif
+#if defined(CONFIG_EF65L_SENSORS_MPU3050) 
+	{
+		I2C_SURF | I2C_FFA,
+        MSM_GSBI5_QUP_I2C_BUS_ID,
+		gyroscope_i2c_info,
+		ARRAY_SIZE(gyroscope_i2c_info),
+	},
+#endif
 #if defined(CONFIG_SMB137B_CHARGER) || defined(CONFIG_SMB137B_CHARGER_MODULE)
 	{
 		I2C_FLUID,
@@ -7795,6 +7949,9 @@ static void __init msm8x60_init_buses(void)
 #endif
 	msm_gsbi9_qup_i2c_device.dev.platform_data = &msm_gsbi9_qup_i2c_pdata;
 	msm_gsbi12_qup_i2c_device.dev.platform_data = &msm_gsbi12_qup_i2c_pdata;
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+	msm_gsbi5_qup_i2c_device.dev.platform_data = &msm_gsbi5_qup_i2c_pdata;
+#endif
 #endif
 #if defined(CONFIG_SPI_QUP) || defined(CONFIG_SPI_QUP_MODULE)
 	msm_gsbi1_qup_spi_device.dev.platform_data = &msm_gsbi1_qup_spi_pdata;
@@ -10790,7 +10947,19 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 			= GPIO_ETHERNET_RESET_N_DRAGON;
 
 	platform_device_register(&smsc911x_device);
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+	mpu3050_power_up();
+#endif
 
+#if defined(CONFIG_EF65L_SENSORS_APDS9900_HW) || defined(CONFIG_EF65L_SENSORS_APDS9900_SW) 
+	proximity_sensor_power_up();
+#endif
+
+#if defined(CONFIG_INPUT_SENSOR)
+        sensors_hw_init();
+        i2c_register_board_info(I2C_DEV_INDEX_PROXIMITY, proximity_i2c_info,
+                ARRAY_SIZE(proximity_i2c_info));
+#endif
 #if (defined(CONFIG_SPI_QUP)) && \
 	(defined(CONFIG_FB_MSM_LCDC_SAMSUNG_OLED_PT) || \
 	defined(CONFIG_FB_MSM_LCDC_AUO_WVGA) || \

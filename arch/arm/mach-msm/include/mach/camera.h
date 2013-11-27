@@ -18,8 +18,7 @@
 #include <linux/poll.h>
 #include <linux/cdev.h>
 #include <linux/platform_device.h>
-//#include <linux/pm_qos.h>
-#include <linux/wakelock.h>
+#include <linux/pm_qos.h>
 #include <linux/regulator/consumer.h>
 #include "linux/types.h"
 
@@ -28,26 +27,17 @@
 #include <linux/ion.h>
 #include <mach/iommu_domains.h>
 
-#ifdef CONFIG_PANTECH_CAMERA
-#define CONFIG_PANTECH_CAMERA_SUSPEND_LOCK
-#define F_PANTECH_CAMERA_LOG_PRINTK
+#ifdef CONFIG_MSM_CAMERA_WAKELOCK
+#include <linux/wakelock.h> 
 #endif
 
 #define CONFIG_MSM_CAMERA_DEBUG
+#define F_PANTECH_CAMERA_LOG_PRINTK
 #ifdef CONFIG_MSM_CAMERA_DEBUG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 #else
 #define CDBG(fmt, args...) do { } while (0)
 #endif
-
-/* Please don't use this in sensor drivers. Use this only in source codes 
- * not surrounded by PANTECH_CAMERA features. */
-#ifdef CONFIG_PANTECH_CAMERA_DEBUG
-#define PCDBG(fmt, args...) pr_info(fmt, ##args)
-#else
-#define PCDBG(fmt, args...) do { } while(0)
-#endif
-
 #ifdef F_PANTECH_CAMERA_LOG_PRINTK
 #define SKYCDBG(fmt, args...) printk(KERN_INFO "SKYCDBG: " fmt, ##args)
 #define SKYCERR(fmt, args...) printk(KERN_ERR "SKYCERR: " fmt, ##args)
@@ -377,8 +367,11 @@ struct msm_sync {
 	struct msm_camvpe_fn vpefn;
 	struct msm_sensor_ctrl sctrl;
 	struct msm_strobe_flash_ctrl sfctrl;
-//	struct pm_qos_request idle_pm_qos;
+	struct pm_qos_request idle_pm_qos;
+#ifdef CONFIG_MSM_CAMERA_WAKELOCK
 	struct wake_lock wake_lock;
+#endif
+	
 #ifdef CONFIG_PANTECH_CAMERA_SUSPEND_LOCK
 	struct wake_lock suspend_lock;
 #endif

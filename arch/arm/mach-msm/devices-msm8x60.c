@@ -430,6 +430,28 @@ static struct resource gsbi4_qup_i2c_resources[] = {
 	},
 };
 
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+static struct resource gsbi5_qup_i2c_resources[] = {
+	{
+		.name	= "qup_phys_addr",
+		.start	= MSM_GSBI5_QUP_PHYS,
+		.end	= MSM_GSBI5_QUP_PHYS + SZ_4K - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "gsbi_qup_i2c_addr",
+		.start	= MSM_GSBI5_PHYS,
+		.end	= MSM_GSBI5_PHYS + 4 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "qup_err_intr",
+		.start	= GSBI5_QUP_IRQ,
+		.end	= GSBI5_QUP_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+#endif
 static struct resource gsbi7_qup_i2c_resources[] = {
 	{
 		.name	= "qup_phys_addr",
@@ -874,6 +896,16 @@ struct platform_device msm_gsbi4_qup_i2c_device = {
 	.num_resources	= ARRAY_SIZE(gsbi4_qup_i2c_resources),
 	.resource	= gsbi4_qup_i2c_resources,
 };
+
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+/* Use GSBI5 QUP for /dev/i2c-1 */
+struct platform_device msm_gsbi5_qup_i2c_device = {
+	.name		= "qup_i2c",
+	.id		= MSM_GSBI5_QUP_I2C_BUS_ID,
+	.num_resources	= ARRAY_SIZE(gsbi5_qup_i2c_resources),
+	.resource	= gsbi5_qup_i2c_resources,
+};
+#endif
 
 /* Use GSBI8 QUP for /dev/i2c-3 */
 struct platform_device msm_gsbi8_qup_i2c_device = {

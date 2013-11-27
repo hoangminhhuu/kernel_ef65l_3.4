@@ -3544,7 +3544,11 @@ static struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("core_clk",		gsbi2_qup_clk.c,	""),
 	CLK_LOOKUP("core_clk",		gsbi3_qup_clk.c,	"qup_i2c.0"),
 	CLK_LOOKUP("core_clk",		gsbi4_qup_clk.c,	"qup_i2c.1"),
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+	CLK_LOOKUP("core_clk",         gsbi5_qup_clk.c, "qup_i2c.33"),
+#else
 	CLK_LOOKUP("core_clk",		gsbi5_qup_clk.c,	""),
+#endif
 	CLK_LOOKUP("core_clk",		gsbi6_qup_clk.c,	""),
 	CLK_LOOKUP("core_clk",		gsbi7_qup_clk.c,	"qup_i2c.4"),
 	CLK_LOOKUP("core_clk",		gsbi8_qup_clk.c,	"qup_i2c.3"),
@@ -3579,7 +3583,11 @@ static struct clk_lookup msm_clocks_8x60[] = {
 	CLK_LOOKUP("iface_clk",		gsbi3_p_clk.c, "msm_serial_hsl.2"),
 	CLK_LOOKUP("iface_clk",		gsbi3_p_clk.c,		"qup_i2c.0"),
 	CLK_LOOKUP("iface_clk",		gsbi4_p_clk.c,		"qup_i2c.1"),
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+    CLK_LOOKUP("iface_clk",     gsbi5_p_clk.c,      "qup_i2c.33"),
+#else
 	CLK_LOOKUP("iface_clk",		gsbi5_p_clk.c,		""),
+#endif
 	CLK_LOOKUP("iface_clk",		gsbi6_p_clk.c, "msm_serial_hs.0"),
 	CLK_LOOKUP("iface_clk",		gsbi7_p_clk.c,		"qup_i2c.4"),
 	CLK_LOOKUP("iface_clk",		gsbi8_p_clk.c,		"qup_i2c.3"),

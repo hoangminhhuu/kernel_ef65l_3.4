@@ -23,6 +23,9 @@
 #define MSM_SSBI2_I2C_BUS_ID     7
 #define MSM_SSBI3_I2C_BUS_ID     8
 
+#if defined(CONFIG_EF65L_SENSORS_MPU3050)
+#define MSM_GSBI5_QUP_I2C_BUS_ID 33
+#endif
 #ifdef CONFIG_SND_SOC_MSM8660_APQ
 extern struct platform_device msm_pcm;
 extern struct platform_device msm_pcm_routing;

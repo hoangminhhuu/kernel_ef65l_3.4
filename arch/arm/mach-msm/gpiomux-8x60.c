@@ -21,6 +21,7 @@ static struct gpiomux_setting console_uart = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 
+#if !defined(CONFIG_EF65L_SENSORS_APDS9900_SW)
 /* The SPI configurations apply to GSBI1 and GSBI10 */
 static struct gpiomux_setting spi_active = {
 	.func = GPIOMUX_FUNC_1,
@@ -39,6 +40,7 @@ static struct gpiomux_setting spi_suspended_cs_config = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
+#endif
 
 /* This I2C active configuration applies to GSBI3 and GSBI4 */
 static struct gpiomux_setting i2c_active = {
@@ -46,6 +48,13 @@ static struct gpiomux_setting i2c_active = {
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
+#if defined(CONFIG_EF65L_SENSORS_MPU3050) 
+static struct gpiomux_setting gsbi5 = {
+	.func = GPIOMUX_FUNC_1,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+#endif
 
 static struct gpiomux_setting i2c_active_gsbi7 = {
 	.func = GPIOMUX_FUNC_1,
@@ -462,6 +471,7 @@ static struct msm_gpiomux_config msm8x60_gsbi_configs[] __initdata = {
 			[GPIOMUX_ACTIVE]    = &spi_active,
 		},
 	},
+#if !defined(CONFIG_EF65L_SENSORS_MPU3050) 		
 	{
 		.gpio      = 35,
 		.settings = {
@@ -476,6 +486,7 @@ static struct msm_gpiomux_config msm8x60_gsbi_configs[] __initdata = {
 			[GPIOMUX_ACTIVE]    = &spi_active,
 		},
 	},
+#endif
 	{
 		.gpio      = 43,
 		.settings = {
@@ -504,6 +515,20 @@ static struct msm_gpiomux_config msm8x60_gsbi_configs[] __initdata = {
 			[GPIOMUX_ACTIVE]    = &i2c_active,
 		},
 	},
+#if defined(CONFIG_EF65L_SENSORS_MPU3050) 
+	{
+		.gpio      = 51,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+	{
+		.gpio      = 52,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi5,
+		},
+	},
+#endif
 	{
 		.gpio      = 59,
 		.settings = {
