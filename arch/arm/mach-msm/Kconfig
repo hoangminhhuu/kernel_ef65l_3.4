@@ -2470,4 +2470,8 @@ config MSM_8X60_FUSION_GPIO_GLITCH
 	help
 	  Enable masking of glitch during boot up, which helps in avoiding unwanted
 	  noise or s/w code from toggling the ap2mdm err fatal.
+	  
+config PANMAC
+	bool "Pantech panmac driver"
+
 endif
