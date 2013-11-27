@@ -110,6 +110,17 @@
 #include <mach/ion.h>
 #include <mach/msm_rtb.h>
 
+#if defined(CONFIG_PN544)
+#include <linux/pn544.h>
+#define NFC_I2C_SDA             72
+#define NFC_I2C_SCL             73
+#define NFC_IRQ_GPIO         105
+#define NFC_ENABLE_GPIO         16
+#define NFC_FW_DL_GPIO          17
+#define NFC_SLAVE_ADDR		    0x28	
+#endif
+
+
 #define MSM_SHARED_RAM_PHYS 0x40000000
 #define MDM2AP_SYNC 129
 
@@ -1567,6 +1578,21 @@ static struct msm_hsusb_gadget_platform_data msm_gadget_pdata = {
 	.is_phy_status_timer_on = 1,
 };
 #endif
+#if defined(CONFIG_PN544)
+static struct pn544_i2c_platform_data pn544 = {
+	.irq_gpio = NFC_IRQ_GPIO,
+	.ven_gpio = NFC_ENABLE_GPIO,
+	.firm_gpio = NFC_FW_DL_GPIO,
+};
+
+static struct i2c_board_info nfc_i2c_boardinfo[] __initdata = {
+	{
+		I2C_BOARD_INFO("pn544", NFC_SLAVE_ADDR),
+        .irq = MSM_GPIO_TO_INT(NFC_IRQ_GPIO),
+        .platform_data = &pn544,
+	},
+};
+#endif
 
 #ifdef CONFIG_USB_G_ANDROID
 
@@ -2763,6 +2789,14 @@ static struct msm_i2c_platform_data msm_gsbi9_qup_i2c_pdata = {
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
+#if defined(CONFIG_PN544)
+static struct msm_i2c_platform_data msm_gsbi10_qup_i2c_pdata = {
+	.clk_freq = 400000,
+	.src_clk_rate = 24000000,
+	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
+};
+#endif
+
 static struct msm_i2c_platform_data msm_gsbi12_qup_i2c_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
@@ -2776,9 +2810,11 @@ static struct msm_spi_platform_data msm_gsbi1_qup_spi_pdata = {
 	.max_clock_speed = 24000000,
 };
 
+#if !defined(CONFIG_PN544)
 static struct msm_spi_platform_data msm_gsbi10_qup_spi_pdata = {
 	.max_clock_speed = 24000000,
 };
+#endif
 #endif
 
 #ifdef CONFIG_I2C_SSBI
@@ -4563,6 +4599,9 @@ static struct platform_device *rumi_sim_devices[] __initdata = {
 	&smc91x_device,
 	&msm_device_uart_dm12,
 #ifdef CONFIG_I2C_QUP
+#if defined(CONFIG_PN544)
+	&msm_gsbi10_qup_i2c_device,
+#endif
 	&msm_gsbi3_qup_i2c_device,
 	&msm_gsbi4_qup_i2c_device,
 	&msm_gsbi7_qup_i2c_device,
@@ -5588,6 +5627,9 @@ static struct platform_device *surf_devices[] __initdata = {
 #if defined(CONFIG_EF65L_SENSORS_MPU3050)
 	&msm_gsbi5_qup_i2c_device,
 #endif
+#endif
+#if defined(CONFIG_PN544)
+	&msm_gsbi10_qup_i2c_device,
 #endif
 #ifdef CONFIG_SERIAL_MSM_HS
 	&msm_device_uart_dm1,
@@ -7851,6 +7893,14 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		ARRAY_SIZE(wm8903_codec_i2c_info),
 	},
 #endif
+#if defined(CONFIG_PN544)
+	{
+		I2C_SURF | I2C_FFA,
+		MSM_GSBI10_QUP_I2C_BUS_ID,
+		nfc_i2c_boardinfo,
+		ARRAY_SIZE(nfc_i2c_boardinfo),
+	},
+#endif
 };
 #endif /* CONFIG_I2C */
 
@@ -7968,6 +8018,9 @@ static void __init msm8x60_init_buses(void)
 	}
 #endif
 	msm_gsbi9_qup_i2c_device.dev.platform_data = &msm_gsbi9_qup_i2c_pdata;
+#if defined(CONFIG_PN544)
+	msm_gsbi10_qup_i2c_device.dev.platform_data = &msm_gsbi10_qup_i2c_pdata;
+#endif
 	msm_gsbi12_qup_i2c_device.dev.platform_data = &msm_gsbi12_qup_i2c_pdata;
 #if defined(CONFIG_EF65L_SENSORS_MPU3050)
 	msm_gsbi5_qup_i2c_device.dev.platform_data = &msm_gsbi5_qup_i2c_pdata;
@@ -7994,8 +8047,10 @@ static void __init msm8x60_init_buses(void)
 		msm_otg_pdata.vbus_power = msm_hsusb_smb137b_vbus_power;
 #endif
 #if defined(CONFIG_SPI_QUP) || defined(CONFIG_SPI_QUP_MODULE)
+#if !defined(CONFIG_PN544)
 		msm_gsbi10_qup_spi_device.dev.platform_data =
 					&msm_gsbi10_qup_spi_pdata;
+#endif
 #endif
 	}
 
@@ -10712,6 +10767,35 @@ void msm_fusion_setup_pinctrl(void)
 		msm_xo_mode_vote(a1, MSM_XO_MODE_PIN_CTRL);
 	}
 }
+#ifdef CONFIG_PN544
+static unsigned nfc_config_init[] = {
+    GPIO_CFG(NFC_IRQ_GPIO, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+    GPIO_CFG(NFC_ENABLE_GPIO, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+    GPIO_CFG(NFC_FW_DL_GPIO, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+/* check i2c : remove the comment, you can test i2c */
+//  GPIO_CFG(NFC_WAKEUP_GPIO, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+//  GPIO_CFG(NFC_ENABLE_GPIO, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+};
+
+
+static void __init nfc_power_init(void)
+{
+
+    int rc = 0;
+    int pin = 0;
+
+     printk("==== choi nfc_power_init\n");
+    for (pin = 0; pin < ARRAY_SIZE(nfc_config_init); pin++) {
+        rc = gpio_tlmm_config(nfc_config_init[pin], GPIO_CFG_ENABLE);
+        if (rc) {
+            return;
+        }
+    }
+/* check i2c : remove the comment, you can test i2c */
+//    gpio_set_value(NFC_ENABLE_GPIO, 1);
+    return;
+}
+#endif /* CONFIG_PN544 */
 
 struct msm_board_data {
 	struct msm_gpiomux_configs *gpiomux_cfgs;
@@ -10946,9 +11030,11 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 
 
 #if defined(CONFIG_SPI_QUP) || defined(CONFIG_SPI_QUP_MODULE)
+#if !defined(CONFIG_PN544)
 	if (machine_is_msm8x60_fluid())
 		platform_device_register(&msm_gsbi10_qup_spi_device);
 	else
+#endif    
 		platform_device_register(&msm_gsbi1_qup_spi_device);
 #endif
 
@@ -11029,6 +11115,9 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 		platform_device_register(&fluid_leds_gpio);
 	else
 		platform_device_register(&gpio_leds);
+#if defined(CONFIG_PN544)
+    nfc_power_init();
+#endif
 #endif
 
 	msm8x60_multi_sdio_init();

@@ -133,6 +133,10 @@ extern struct platform_device msm_device_i2c_2;
 
 extern struct platform_device qup_device_i2c;
 
+#if defined(CONFIG_PN544)
+extern struct platform_device msm_gsbi10_qup_i2c_device;
+#endif
+
 extern struct platform_device msm_gsbi0_qup_i2c_device;
 extern struct platform_device msm_gsbi1_qup_i2c_device;
 extern struct platform_device msm_gsbi3_qup_i2c_device;

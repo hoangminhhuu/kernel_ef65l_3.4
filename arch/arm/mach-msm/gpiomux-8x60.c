@@ -380,13 +380,13 @@ static struct gpiomux_setting cam_active_3_cfg = {
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_UP,
 };
-
+#if !defined(CONFIG_PN544)
 static struct gpiomux_setting cam_active_4_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
 };
-
+#endif
 static struct gpiomux_setting cam_active_5_cfg = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_4MA,
@@ -555,9 +555,25 @@ static struct msm_gpiomux_config msm8x60_gsbi_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &gsbi8,
 		},
 	},
+
+#if defined(CONFIG_PN544)
+	{
+		.gpio      = 72,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi10,
+		},
+	},
+	{
+		.gpio      = 73,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &gsbi10,
+		},
+	},
+#endif
 };
 
 static struct msm_gpiomux_config msm8x60_fluid_gsbi_configs[] __initdata = {
+#if !defined(CONFIG_PN544)
 	{
 		.gpio      = 70,
 		.settings = {
@@ -579,6 +595,7 @@ static struct msm_gpiomux_config msm8x60_fluid_gsbi_configs[] __initdata = {
 			[GPIOMUX_ACTIVE]    = &spi_active,
 		},
 	},
+#endif
 };
 
 static struct msm_gpiomux_config msm8x60_ebi2_configs[] __initdata = {
@@ -1338,6 +1355,7 @@ static struct msm_gpiomux_config msm8x60_lcdc_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &lcdc_suspend_cfg,
 		},
 	},
+#if !defined(CONFIG_PN544)
 	/* lcdc_grn3 */
 	{
 		.gpio = 16,
@@ -1354,6 +1372,7 @@ static struct msm_gpiomux_config msm8x60_lcdc_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &lcdc_suspend_cfg,
 		},
 	},
+#endif
 	/* lcdc_grn1 */
 	{
 		.gpio = 18,
@@ -1626,6 +1645,7 @@ static struct msm_gpiomux_config msm8x60_cam_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
 		},
 	},
+#if !defined(CONFIG_PN544)
 	{
 		.gpio = 105,
 		.settings = {
@@ -1633,6 +1653,7 @@ static struct msm_gpiomux_config msm8x60_cam_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &cam_suspend_cfg,
 		},
 	},
+#endif
 	{
 		.gpio = 106,
 		.settings = {

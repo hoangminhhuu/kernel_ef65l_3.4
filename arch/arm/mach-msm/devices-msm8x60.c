@@ -527,6 +527,29 @@ static struct resource gsbi9_qup_i2c_resources[] = {
 	},
 };
 
+#if defined(CONFIG_PN544)
+static struct resource gsbi10_qup_i2c_resources[] = {
+    {
+        .name   = "qup_phys_addr",
+        .start  = MSM_GSBI10_QUP_PHYS,
+        .end    = MSM_GSBI10_QUP_PHYS + SZ_4K - 1,
+        .flags  = IORESOURCE_MEM,
+    },
+    {
+        .name   = "gsbi_qup_i2c_addr",
+        .start  = MSM_GSBI10_PHYS,
+        .end    = MSM_GSBI10_PHYS + 4 - 1,
+        .flags  = IORESOURCE_MEM,
+    },
+    {
+        .name   = "qup_err_intr",
+        .start  = GSBI10_QUP_IRQ,
+        .end    = GSBI10_QUP_IRQ,
+        .flags  = IORESOURCE_IRQ,
+    },
+};
+#endif
+
 static struct resource gsbi12_qup_i2c_resources[] = {
 	{
 		.name	= "qup_phys_addr",
@@ -931,6 +954,16 @@ struct platform_device msm_gsbi7_qup_i2c_device = {
 	.resource	= gsbi7_qup_i2c_resources,
 };
 
+#if defined(CONFIG_PN544)
+/* Use GSBI2 QUP for /dev/i2c-13 */
+struct platform_device msm_gsbi10_qup_i2c_device = {
+    .name           = "qup_i2c",
+    .id             = MSM_GSBI10_QUP_I2C_BUS_ID,
+    .num_resources  = ARRAY_SIZE(gsbi10_qup_i2c_resources),
+    .resource       = gsbi10_qup_i2c_resources,
+};
+#endif /* CONFIG_PN544 */
+
 /* Use GSBI12 QUP for /dev/i2c-5 (Sensors) */
 struct platform_device msm_gsbi12_qup_i2c_device = {
 	.name		= "qup_i2c",
@@ -1058,6 +1091,7 @@ struct platform_device msm_gsbi1_qup_spi_device = {
 	.resource	= gsbi1_qup_spi_resources,
 };
 
+#if !defined(CONFIG_PN544)
 
 static struct resource gsbi10_qup_spi_resources[] = {
 	{
@@ -1105,6 +1139,10 @@ struct platform_device msm_gsbi10_qup_spi_device = {
 	.num_resources	= ARRAY_SIZE(gsbi10_qup_spi_resources),
 	.resource	= gsbi10_qup_spi_resources,
 };
+#else
+struct platform_device msm_gsbi10_qup_spi_device = {};
+#endif	
+
 #define MSM_SDC1_BASE         0x12400000
 #define MSM_SDC1_DML_BASE     (MSM_SDC1_BASE + 0x800)
 #define MSM_SDC1_BAM_BASE     (MSM_SDC1_BASE + 0x2000)

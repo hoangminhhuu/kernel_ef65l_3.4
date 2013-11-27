@@ -642,6 +642,13 @@ config QFP_FUSE
 	  fuses. The ioctls provides the necessary interface
 	  to the fuse block. Currently this is supported only
 	  on FSM targets.
+	  
+config PN544
+	bool "NXP PN544 NFC Controller Driver"
+	depends on I2C
+	default y
+	help
+	NXP PN544 Near Field Communication controller support.
 
 config USB_HSIC_SMSC_HUB
 	tristate "Support for HSIC based MSM on-chip SMSC3503 HUB"
