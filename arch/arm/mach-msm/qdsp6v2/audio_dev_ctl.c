@@ -25,6 +25,9 @@
 #include <mach/qdsp6v2/q6voice.h>
 #include <sound/apr_audio.h>
 #include <sound/q6adm.h>
+#ifdef CONFIG_SKY_SND_EXTAMP  //N1066 20120410 Sound Patch /* elecjang 20110421 for max97001 subsystem */
+#include "sky_snd_ext_amp_max97001.h"
+#endif
 
 #ifndef MAX
 #define  MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -1717,6 +1720,10 @@ static int __init audio_dev_ctrl_init(void)
 
 	memset(routing_info.copp_list, COPP_IGNORE,
 		(sizeof(unsigned int) * MAX_SESSIONS * AFE_MAX_PORTS));
+#ifdef CONFIG_SKY_SND_EXTAMP //N1066 20120410 Sound Patch/* elecjang 20110421 for max97001 subsystem */
+	snd_extamp_api_Init();
+#endif
+
 	return misc_register(&audio_dev_ctrl_misc);
 }
 

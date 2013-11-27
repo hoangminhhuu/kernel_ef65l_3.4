@@ -100,6 +100,12 @@
 #include "timer.h"
 #include "gpiomux-8x60.h"
 #include "rpm_stats.h"
+
+#ifdef CONFIG_SKY_SND_EXTAMP //N1066 20120410 Sound Patch /* elecjang 20110421 for max97001 subsystem */
+#include <linux/i2c-gpio.h>
+#include "./qdsp6v2/sky_snd_ext_amp_max97001.h"
+#endif
+
 #include "peripheral-loader.h"
 #include <linux/platform_data/qcom_crypto_device.h>
 #include "rpm_resources.h"
@@ -798,6 +804,14 @@ static struct i2c_board_info msm_isa1200_board_info[] = {
 	{
 		I2C_BOARD_INFO("isa1200_1", 0x90>>1),
 		.platform_data = &isa1200_1_pdata,
+	},
+};
+#endif
+
+#ifdef CONFIG_SKY_SND_EXTAMP //N1066 20120410 Sound Patch /* elecjang 20110421 for max97001 subsystem */
+static struct i2c_board_info i2c_subsystem_devices[] __initdata = {
+	{
+		I2C_BOARD_INFO("max97001-amp", MAX97001_SLAVE_ADDR),
 	},
 };
 #endif
@@ -7893,6 +7907,16 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		ARRAY_SIZE(wm8903_codec_i2c_info),
 	},
 #endif
+
+#ifdef CONFIG_SKY_SND_EXTAMP //N1066 20120410 Sound Patch/* elecjang 20110421 for max97001 subsystem */
+	{
+		I2C_SURF | I2C_FFA | I2C_FLUID,
+		MSM_GSBI3_QUP_I2C_BUS_ID,
+		i2c_subsystem_devices,
+		ARRAY_SIZE(i2c_subsystem_devices),
+	},
+#endif
+
 #if defined(CONFIG_PN544)
 	{
 		I2C_SURF | I2C_FFA,
