@@ -154,6 +154,7 @@
 static struct platform_device ion_dev;
 #endif
 
+#define CONFIG_PANTECH_BT 1 // lsi@ps2.20110408 bluez by KSJ_device 2011_05_12
 enum {
 	GPIO_EXPANDER_IRQ_BASE  = PM8901_IRQ_BASE + NR_PMIC8901_IRQS,
 	GPIO_EXPANDER_GPIO_BASE = PM8901_MPP_BASE + PM8901_MPPS,
@@ -3982,11 +3983,13 @@ static int configure_uart_gpios(int on)
 			msm_gpiomux_put(uart_gpios[i]);
 	return ret;
 }
+#ifdef CONFIG_PANTECH_BT
 static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
        .inject_rx_on_wakeup = 1,
        .rx_to_inject = 0xFD,
        .gpio_config = configure_uart_gpios,
 };
+#endif // CONFIG_PANTECH_BT
 #endif
 
 
@@ -4591,6 +4594,54 @@ static struct platform_device *early_devices[] __initdata = {
 	&msm_device_dmov_adm1,
 };
 
+#ifdef CONFIG_PANTECH_BT //lsi@ps2.20110408 bluez by KSJ_device 2011_05_12
+static struct resource bluesleep_resources[] = {
+	{
+		.name	= "gpio_host_wake",
+		.start	= 128,
+		.end	= 128,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "gpio_ext_wake",
+		.start	= 138,
+		.end	= 138,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "host_wake",
+		.start	= MSM_GPIO_TO_INT(128),
+		.end	= MSM_GPIO_TO_INT(128),
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device msm_bluesleep_device = {
+	.name = "bluesleep",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(bluesleep_resources),
+	.resource	= bluesleep_resources,
+};
+
+static struct platform_device msm_bt_power_device = {
+	.name = "bt_power",
+	.id	 = -1,
+};
+
+enum {
+	BT_WAKE,
+	BT_RFR,
+	BT_CTS,
+	BT_RX,
+	BT_TX,
+	BT_PCM_DOUT,
+	BT_PCM_DIN,
+	BT_PCM_SYNC,
+	BT_PCM_CLK,
+	BT_HOST_WAKE,
+	BT_SYSRST,
+};
+#else //CONFIG_PANTECH_BT
 #if (defined(CONFIG_MARIMBA_CORE)) && \
 	(defined(CONFIG_MSM_BT_POWER) || defined(CONFIG_MSM_BT_POWER_MODULE))
 
@@ -4602,6 +4653,7 @@ static struct platform_device msm_bt_power_device = {
 		.platform_data = &bluetooth_power,
 	},
 };
+#endif
 #endif
 
 static struct platform_device msm_tsens_device = {
@@ -5645,7 +5697,7 @@ static struct platform_device *surf_devices[] __initdata = {
 #if defined(CONFIG_PN544)
 	&msm_gsbi10_qup_i2c_device,
 #endif
-#ifdef CONFIG_SERIAL_MSM_HS
+#if defined(CONFIG_SERIAL_MSM_HS) || defined(CONFIG_PANTECH_BT) //lsi@ps2.bluez
 	&msm_device_uart_dm1,
 #endif
 #ifdef CONFIG_MSM_SSBI
@@ -5760,6 +5812,9 @@ static struct platform_device *surf_devices[] __initdata = {
 	(defined(CONFIG_MSM_BT_POWER) || defined(CONFIG_MSM_BT_POWER_MODULE))
 	&msm_bt_power_device,
 #endif
+#ifdef CONFIG_PANTECH_BT
+	&msm_bluesleep_device,
+#endif//CONFIG_PANTECH_BT
 #ifdef CONFIG_SENSORS_MSM_ADC
 	&msm_adc_device,
 #endif
@@ -10428,6 +10483,91 @@ static void set_mdp_clocks_for_wuxga(void)
 
 	mdp_pdata.mdp_max_clk = 200000000;
 }
+#ifdef CONFIG_PANTECH_BT //lsi@ps2.20110408 bluez by KSJ_device 2011_05_12
+static unsigned bt_config_power_on[] = {
+	GPIO_CFG(128, 0, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* BT_WAKE_MSM : Maoint */
+	GPIO_CFG(138, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* MSM_WAKE_BT */
+	GPIO_CFG(158, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* BT_SYSRST */
+	GPIO_CFG(101, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* BT_REG_ON */
+	GPIO_CFG( 56, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* RFR */
+	GPIO_CFG( 55, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* CTS */
+	GPIO_CFG( 54, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* Rx : Maoint */
+	GPIO_CFG( 53, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* Tx */
+	GPIO_CFG(114, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* PCM_CLK */
+	GPIO_CFG(113, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* PCM_SYNC */
+	GPIO_CFG(112, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* PCM_DIN */
+	GPIO_CFG(111, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* PCM_DOUT */
+};
+
+static unsigned bt_config_power_off[] = {
+	GPIO_CFG(128, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* BT_WAKE_MSM : Maoint */
+	GPIO_CFG(138, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* MSM_WAKE_BT */
+	GPIO_CFG(158, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* BT_SYSRST */
+	GPIO_CFG(101, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* BT_REG_ON */
+	GPIO_CFG( 56, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* RFR */
+	GPIO_CFG( 55, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* CTS */
+	GPIO_CFG( 54, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* Rx : Maoint */
+	GPIO_CFG( 53, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* Tx */
+	GPIO_CFG(114, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* PCM_CLK */
+	GPIO_CFG(113, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* PCM_SYNC */
+	GPIO_CFG(112, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* PCM_DIN */
+	GPIO_CFG(111, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* PCM_DOUT */
+};
+
+static int bluetooth_power(int on)
+{
+	int pin, rc;
+
+	printk(KERN_ERR "BT - %s: on(%d)\n",__func__, on);
+
+	if (on)
+	{
+		for (pin = 0; pin < ARRAY_SIZE(bt_config_power_on); pin++) {
+			rc = gpio_tlmm_config(bt_config_power_on[pin], GPIO_CFG_ENABLE);
+			if (rc) {
+				printk(KERN_ERR "%s: gpio_tlmm_config(%#x)=%d\n",
+						__func__, bt_config_power_on[pin], rc);
+				return -EIO;
+			}
+		}
+		mdelay(20);	
+		gpio_set_value(158, 0); /* BT_SYSRST */
+		gpio_set_value(101, 0); /* BT_REG_ON */
+		mdelay(200);
+		gpio_set_value(158, on); /* BT_SYSRST */
+		gpio_set_value(101, on); /* BT_REG_ON */
+		mdelay(200);
+	}
+	else
+	{
+		mdelay(200);
+		gpio_set_value(158, on); /* BT_SYSRST */
+		gpio_set_value(101, on); /* BT_REG_ON */
+		mdelay(20);
+
+		for (pin = 0; pin < ARRAY_SIZE(bt_config_power_off); pin++) {
+			rc = gpio_tlmm_config(bt_config_power_off[pin], GPIO_CFG_ENABLE);
+			if (rc) {
+				printk(KERN_ERR "%s: gpio_tlmm_config(%#x)=%d\n",
+						__func__, bt_config_power_off[pin], rc);
+				return -EIO;
+			}
+		}
+
+	}
+
+	printk(KERN_ERR "BT - %s: on(%d) Done!! \n",__func__, on);
+	return 0;
+}
+
+static void __init bt_power_init(void)
+{
+	printk(KERN_ERR "BT - %s: \n",__func__);
+   bluetooth_power(0);
+	msm_bt_power_device.dev.platform_data = &bluetooth_power;
+}
+
+#else //CONFIG_PANTECH_BT
 
 #if (defined(CONFIG_MARIMBA_CORE)) && \
 	(defined(CONFIG_MSM_BT_POWER) || defined(CONFIG_MSM_BT_POWER_MODULE))
@@ -10768,6 +10908,7 @@ out:
 }
 
 #endif /*CONFIG_MARIMBA_CORE, CONFIG_MSM_BT_POWER, CONFIG_MSM_BT_POWER_MODULE*/
+#endif //CONFIG_PANTECH_BT
 
 static void __init msm8x60_cfg_smsc911x(void)
 {
@@ -11142,6 +11283,11 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 #if defined(CONFIG_PN544)
     nfc_power_init();
 #endif
+
+#ifdef CONFIG_PANTECH_BT
+	bt_power_init();
+#endif // CONFIG_PANTECH_BT
+
 #endif
 
 	msm8x60_multi_sdio_init();
