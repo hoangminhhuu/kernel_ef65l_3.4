@@ -6467,6 +6467,34 @@ static struct pmic8058_led pmic8058_flash_leds[] = {
 		.max_brightness = 15,
 		.id		= PMIC8058_ID_FLASH_LED_1,
 	},
+
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+	[2] = {
+		.name			= "keyboard-backlight",
+		.max_brightness = 5,
+		.id				= PMIC8058_ID_LED_KB_LIGHT,
+	},
+
+	[3] = {
+		.name			= "red",
+		.max_brightness = 15,
+		.id				= PMIC8058_ID_LED_0,
+	},
+
+	[4] = {
+		.name			= "green",
+		.max_brightness = 15,
+		.id				= PMIC8058_ID_LED_1,
+	},
+	// pz2123
+	[5] = {
+		.name			= "blue",
+		.max_brightness = 15,
+		.id 				= PMIC8058_ID_LED_2,
+	},
+
+
+#endif
 };
 
 static struct pmic8058_leds_platform_data pm8058_flash_leds_data = {

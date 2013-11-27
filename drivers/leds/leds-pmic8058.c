@@ -16,13 +16,33 @@
 #include <linux/workqueue.h>
 #include <linux/spinlock.h>
 #include <linux/mfd/pm8xxx/core.h>
+#include <linux/mfd/pmic8058.h>
 #include <linux/leds-pmic8058.h>
+#include <linux/miscdevice.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/gpio.h>
 #include <linux/module.h>
 #include <linux/string.h>
+// ----------------------------------------------------------------
+// DEBUG
+// ----------------------------------------------------------------
+
+//#define DBG_ENABLE //LS5 TEAM SHS : 2011-10-25
+
+#ifdef DBG_ENABLE
+#define dbg(fmt, args...)   printk("[LED] " fmt, ##args)
+#else
+#define dbg(fmt, args...)
+#endif
+#define dbg_func_in()       dbg("[+] %s\n", __func__)
+#define dbg_func_out()      dbg("[-] %s\n", __func__)
+#define dbg_line()          dbg("[LINE] %d(%s)\n", __LINE__, __func__)
+// ----------------------------------------------------------------
 
 #define SSBI_REG_ADDR_DRV_KEYPAD	0x48
-#define PM8058_DRV_KEYPAD_BL_MASK	0xf0
-#define PM8058_DRV_KEYPAD_BL_SHIFT	0x04
+#define PM8058_DRV_KEYPAD_BL_MASK	0xf0 	//white level - 0~5- pz2123
+#define PM8058_DRV_KEYPAD_BL_SHIFT	0x04 	//white level - 0~5- pz2123
 
 #define SSBI_REG_ADDR_FLASH_DRV0        0x49
 #define PM8058_DRV_FLASH_MASK           0xf0
@@ -32,8 +52,8 @@
 
 #define SSBI_REG_ADDR_LED_CTRL_BASE	0x131
 #define SSBI_REG_ADDR_LED_CTRL(n)	(SSBI_REG_ADDR_LED_CTRL_BASE + (n))
-#define PM8058_DRV_LED_CTRL_MASK	0xf8
-#define PM8058_DRV_LED_CTRL_SHIFT	0x03
+#define PM8058_DRV_LED_CTRL_MASK	0xf0	//0xf8	rgb level  - 0~15
+#define PM8058_DRV_LED_CTRL_SHIFT	0x04	//0x03	rgb level - 0~15
 
 #define MAX_FLASH_CURRENT	300
 #define MAX_KEYPAD_CURRENT 300
@@ -49,6 +69,9 @@ struct pmic8058_led_data {
 	enum led_brightness	brightness;
 	u8			flags;
 	struct work_struct	work;
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+	struct delayed_work	 led_work;
+#endif
 	struct mutex		lock;
 	spinlock_t		value_lock;
 	u8			reg_kp;
@@ -60,12 +83,194 @@ struct pmic8058_led_data {
 #define PM8058_MAX_LEDS		7
 static struct pmic8058_led_data led_data[PM8058_MAX_LEDS];
 
+/*==========================================================
+  p11309 - wcjeong - 7-LEDs Diming
+==========================================================*/
+
+#if defined(CONFIG_MACH_MSM8X60_EF65L)	
+
+#define DIMING_OPER_INTERVAL_TIME		50		//	diming operation interval time is 50msec
+													// Set to 100 or 200 for debug 
+
+//p12911 : shs 
+#define DIMMING_MODE_ACTIVE		2
+#define DIMMING_MODE_READY		1
+#define DIMMING_MODE_NOTACTIVE	0
+
+#define DIMMING_STATE_LIGHTUP 	2
+#define DIMMING_STATE_DARK		1
+
+
+//	DIMING Duration Time = DIMING_DATA_BASE_TIME + (diming data value)*DIMING_DATA_RESULTION;
+#define DIMING_DATA_BASE_TIME				1000		
+#define DIMING_DATA_RESOLUTION			100			
+
+static int diming_duration_time;
+static int diming_timer_count;
+static unsigned int diming_oper_mode;			// 0: Nothing, 1: get dark, 2: light up, 
+
+static unsigned int diming_set_state[3];
+
+
+static int diming_end_value[3];
+
+static void leds_diming_timer_register(struct pmic8058_led_data *led);
+static void leds_diming_timer_check(struct pmic8058_led_data *led);
+
+#endif
+
+/*=========================================================*/
+
+static long leds_fops_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+static void led_lc_set(struct pmic8058_led_data *led, enum led_brightness value);
+static void kp_bl_set(struct pmic8058_led_data *led, enum led_brightness value);
+static void pmic8058_led_set(struct led_classdev *led_cdev,enum led_brightness value);
+	
+#ifdef CONFIG_USER_GPIO_CONTROL
+#define USER_SET_SLEEP_GPIO		3000
+#define USER_GET_SLEEP_GPIO		3001
+#define USER_GET_CURR_GPIO		3002
+
+static long user_gpio_fops_ioctl(struct file *filp,
+	       unsigned int cmd, unsigned long arg)
+{
+
+	dbg_func_in();
+
+	int gpio_num, gpio_conf;
+	if(cmd == USER_GET_CURR_GPIO) {
+		if (copy_from_user(&gpio_num, (void *) arg, sizeof(gpio_num))) {
+			pr_err("%s: copy from user failed\n", __func__);
+			return -EFAULT;
+		}
+		else {
+			gpio_conf = sky_user_get_curr_gpio(gpio_num);
+			if (copy_to_user((void *) arg, &gpio_conf, sizeof(gpio_conf))) {
+				pr_err("%s: copy to user failed\n", __func__);
+				return -EFAULT;
+			}
+		}	
+	}
+	else if(cmd == USER_GET_SLEEP_GPIO) {
+		if (copy_from_user(&gpio_num, (void *) arg, sizeof(gpio_num))) {
+			pr_err("%s: copy from user failed\n", __func__);
+			return -EFAULT;
+		}
+		else {
+			gpio_conf = sky_user_get_sleep_gpio(gpio_num);
+			if (copy_to_user((void *) arg, &gpio_conf, sizeof(gpio_conf))) {
+				pr_err("%s: copy to user failed\n", __func__);
+				return -EFAULT;
+			}
+		}	
+	}
+	else if(cmd == USER_SET_SLEEP_GPIO){
+		if (copy_from_user(&gpio_conf, (void *) arg, sizeof(gpio_conf))) {
+			pr_err("%s: copy from user failed\n", __func__);
+			return -EFAULT;
+		}
+		else {
+			sky_user_set_sleep_gpio(gpio_conf);
+		}
+	}
+	else {
+		pr_err("Device does not support CMD\n");
+	}
+
+	dbg_func_out()
+
+	return 0;
+}
+static struct file_operations user_gpio_fops = {
+	.owner = THIS_MODULE,
+	.unlocked_ioctl = user_gpio_fops_ioctl,
+};
+static struct miscdevice user_gpio_event = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "gpio_ctrl_fops",
+	.fops = &user_gpio_fops,
+};
+#endif
+
+static struct file_operations leds_fops = {
+	.owner = THIS_MODULE,
+	.unlocked_ioctl = leds_fops_ioctl,
+};
+
+static struct miscdevice led_event = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "led_fops",
+	.fops = &leds_fops,
+};
+static long leds_fops_ioctl(struct file *filp,
+	       unsigned int cmd, unsigned long arg)
+{
+	int led_offset=arg+1;
+	dbg("leds_fops_ioctl : id = %ld, brightness = %d, led_offset =[%d] \n", arg, cmd,led_offset );
+
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+
+	//ls5 team shs : modify here
+	switch(led_offset)
+	{
+		case PMIC8058_ID_LED_KB_LIGHT :
+		cmd = (cmd & PM8058_DRV_KEYPAD_BL_MASK) >> PM8058_DRV_KEYPAD_BL_SHIFT;				
+		led_data[PMIC8058_ID_LED_KB_LIGHT].brightness=cmd;
+		kp_bl_set(&led_data[PMIC8058_ID_LED_KB_LIGHT], (int)cmd);		
+		break;
+		case PMIC8058_ID_LED_0 :
+		case PMIC8058_ID_LED_1 :
+		case PMIC8058_ID_LED_2 :
+			diming_set_state[0]=DIMMING_MODE_NOTACTIVE;
+			diming_set_state[1]=DIMMING_MODE_NOTACTIVE;
+			diming_set_state[2]=DIMMING_MODE_NOTACTIVE;			
+			led_data[led_offset].brightness = (u8)cmd;
+			led_data[led_offset].reg_led_ctrl[led_offset-PMIC8058_ID_LED_0] = (u8)cmd;
+			led_lc_set(&led_data[led_offset], (int)cmd);					
+		break;		
+		default:
+		dbg("leds_fops_ioctl ERROR  led_offset => [%d]",led_offset);
+		break;
+		
+	}
+/* ls5 team shs : fix bug
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+	if ( arg == 0 ) { // white		
+		struct pmic8058_led_data *led;		
+		cmd = (cmd & PM8058_DRV_KEYPAD_BL_MASK) >> PM8058_DRV_KEYPAD_BL_SHIFT;	
+
+		led = container_of(&led_data[PMIC8058_ID_LED_KB_LIGHT].cdev, struct pmic8058_led_data, cdev);		
+		led->brightness = cmd;				
+		
+		kp_bl_set(&led_data[PMIC8058_ID_LED_KB_LIGHT], (int)cmd);
+	}
+
+	
+	if ( (arg >= 1) && (arg <= 3) ) { // RGB	 pz2123
+
+			del_timer(&diming_timer);
+			diming_oper_mode = 0;				
+
+		led_data[PMIC8058_ID_LED_KB_LIGHT].id = arg+1;
+		led_data[PMIC8058_ID_LED_KB_LIGHT].brightness = (u8)cmd;
+		led_data[PMIC8058_ID_LED_KB_LIGHT].reg_led_ctrl[arg-1] = (u8)cmd;
+		led_data[arg+1].reg_led_ctrl[arg-1] = (u8)cmd;
+		led_data[arg+1].brightness = (u8)cmd;
+		led_lc_set(&led_data[PMIC8058_ID_LED_KB_LIGHT], (int)cmd);		
+	}
+*/
+#endif
+
+	return true;
+}
 static void kp_bl_set(struct pmic8058_led_data *led, enum led_brightness value)
 {
 	int rc;
 	u8 level;
 	unsigned long flags;
 
+	dbg_func_in();
+	dbg("[LED] value = %d \n", value);
 	spin_lock_irqsave(&led->value_lock, flags);
 	level = (value << PM8058_DRV_KEYPAD_BL_SHIFT) &
 				 PM8058_DRV_KEYPAD_BL_MASK;
@@ -76,17 +281,20 @@ static void kp_bl_set(struct pmic8058_led_data *led, enum led_brightness value)
 
 	rc = pm8xxx_writeb(led->dev->parent, SSBI_REG_ADDR_DRV_KEYPAD,
 						led->reg_kp);
+	dbg("value = %d, level=%d \n", value, led->reg_kp);
 	if (rc)
 		pr_err("%s: can't set keypad backlight level\n", __func__);
+	dbg_func_out();
 }
 
 static enum led_brightness kp_bl_get(struct pmic8058_led_data *led)
 {
-	if ((led->reg_kp & PM8058_DRV_KEYPAD_BL_MASK) >>
-			 PM8058_DRV_KEYPAD_BL_SHIFT)
-		return LED_FULL;
-	else
-		return LED_OFF;
+	int br = ((led->reg_kp & PM8058_DRV_KEYPAD_BL_MASK) >> PM8058_DRV_KEYPAD_BL_SHIFT); // pz2123
+
+	if (br)
+ 		return br; //LED_FULL; // pz2123
+ 	else
+ 		return LED_OFF;
 }
 
 static void led_lc_set(struct pmic8058_led_data *led, enum led_brightness value)
@@ -95,20 +303,41 @@ static void led_lc_set(struct pmic8058_led_data *led, enum led_brightness value)
 	int rc, offset;
 	u8 level, tmp;
 
+	dbg_func_in();
 	spin_lock_irqsave(&led->value_lock, flags);
-
-	level = (led->brightness << PM8058_DRV_LED_CTRL_SHIFT) &
-		PM8058_DRV_LED_CTRL_MASK;
+	level = (led->brightness << PM8058_DRV_LED_CTRL_SHIFT) & PM8058_DRV_LED_CTRL_MASK;
 
 	offset = PMIC8058_LED_OFFSET(led->id);
+
+#if defined(CONFIG_MACH_MSM8X60_EF65L)	
+
+	offset = PMIC8058_LED_OFFSET(led->id);
+	dbg("EF65L reg_led_ctrl[%d]  %d\n", offset, led->reg_led_ctrl[offset]);
+
+	tmp = led->reg_led_ctrl[offset];
+	tmp &= ~PM8058_DRV_LED_CTRL_MASK;	// delete diming duratio time
+//	tmp |= led->reg_led_ctrl[offset];	// p11309
+	tmp = tmp << PM8058_DRV_LED_CTRL_SHIFT ;
+
+	dbg("EF65L reg_led_ctrl[%d] %d, %d\n", offset, led->reg_led_ctrl[offset], tmp);
+
+	spin_unlock_irqrestore(&led->value_lock, flags);		
+	rc = pm8xxx_writeb(led->dev->parent, SSBI_REG_ADDR_LED_CTRL(offset),tmp);
+
+	if (rc) {
+		dev_err(led->cdev.dev, "can't set (%d) led value\n", led->id);
+		return;
+	}	
+	
+#else
 	tmp = led->reg_led_ctrl[offset];
 
 	tmp &= ~PM8058_DRV_LED_CTRL_MASK;
 	tmp |= level;
 	spin_unlock_irqrestore(&led->value_lock, flags);
 
-	rc = pm8xxx_writeb(led->dev->parent, SSBI_REG_ADDR_LED_CTRL(offset),
-								tmp);
+	rc = pm8xxx_writeb(led->dev->parent, SSBI_REG_ADDR_LED_CTRL(offset), tmp);
+	dbg("LED_0: offset=%d, level=%d\n", offset, level);
 	if (rc) {
 		dev_err(led->cdev.dev, "can't set (%d) led value\n",
 				led->id);
@@ -118,19 +347,23 @@ static void led_lc_set(struct pmic8058_led_data *led, enum led_brightness value)
 	spin_lock_irqsave(&led->value_lock, flags);
 	led->reg_led_ctrl[offset] = tmp;
 	spin_unlock_irqrestore(&led->value_lock, flags);
+#endif
+	dbg_func_out();
 }
 
 static enum led_brightness led_lc_get(struct pmic8058_led_data *led)
 {
-	int offset;
+	int offset, br = 0 ; 	// pz2123;
 	u8 value;
+
+	dbg("led_lc_get : %d\n", led->id);
 
 	offset = PMIC8058_LED_OFFSET(led->id);
 	value = led->reg_led_ctrl[offset];
 
-	if ((value & PM8058_DRV_LED_CTRL_MASK) >>
-			PM8058_DRV_LED_CTRL_SHIFT)
-		return LED_FULL;
+	br = ((value & PM8058_DRV_LED_CTRL_MASK) >> PM8058_DRV_LED_CTRL_SHIFT);  // pz2123;
+	if(br)
+		return br;
 	else
 		return LED_OFF;
 }
@@ -143,6 +376,8 @@ led_flash_set(struct pmic8058_led_data *led, enum led_brightness value)
 	unsigned long flags;
 	u8 reg_flash_led;
 	u16 reg_addr;
+
+	dbg_func_in();	
 
 	spin_lock_irqsave(&led->value_lock, flags);
 	level = (value << PM8058_DRV_FLASH_SHIFT) &
@@ -161,10 +396,16 @@ led_flash_set(struct pmic8058_led_data *led, enum led_brightness value)
 	}
 	spin_unlock_irqrestore(&led->value_lock, flags);
 
+	reg_addr	    = SSBI_REG_ADDR_FLASH_DRV0;
 	rc = pm8xxx_writeb(led->dev->parent, reg_addr, reg_flash_led);
-	if (rc)
-		pr_err("%s: can't set flash led%d level %d\n", __func__,
-			led->id, rc);
+	dbg("FLASH_0: value = %d, level=%d \n", value, led->reg_kp);
+	if (rc)		pr_err("%s: can't set flash led%d level %d\n", __func__,			led->id, rc);
+	reg_addr	    = SSBI_REG_ADDR_FLASH_DRV1;
+	rc = pm8xxx_writeb(led->dev->parent, reg_addr, reg_flash_led);
+	dbg("FLASH_1: value = %d, level=%d \n", value, led->reg_kp);
+	if (rc) pr_err("%s: can't set flash led%d level %d\n", __func__,led->id, rc);
+
+	dbg_func_out();
 }
 
 int pm8058_set_flash_led_current(enum pmic8058_leds id, unsigned mA)
@@ -240,12 +481,26 @@ static void pmic8058_led_set(struct led_classdev *led_cdev,
 	struct pmic8058_led_data *led;
 	unsigned long flags;
 
-	led = container_of(led_cdev, struct pmic8058_led_data, cdev);
+	dbg_func_in();
+	
+	dbg("value = %d \n", value);
 
+	led = container_of(led_cdev, struct pmic8058_led_data, cdev);
 	spin_lock_irqsave(&led->value_lock, flags);
-	led->brightness = value;
+
+	//	p11309 - for diming
+	//	led->brightness = value;
+	if ( led->id >= PMIC8058_ID_LED_0 && led->id <= PMIC8058_ID_LED_2) 
+		led->brightness = value;
+	else 
+		led->brightness = (value & PM8058_DRV_LED_CTRL_MASK) >> PM8058_DRV_LED_CTRL_SHIFT;
+
+	dbg("--> scaled value = %d, id=%d\n", led->brightness, led->id);
+	
 	schedule_work(&led->work);
 	spin_unlock_irqrestore(&led->value_lock, flags);
+
+	dbg_func_out();
 }
 
 static void pmic8058_led_work(struct work_struct *work)
@@ -255,15 +510,44 @@ static void pmic8058_led_work(struct work_struct *work)
 
 	mutex_lock(&led->lock);
 
+	dbg("pmic8058_led_work : id=%d, brightness=%d\n", led->id, led->brightness);
+
 	switch (led->id) {
 	case PMIC8058_ID_LED_KB_LIGHT:
 		kp_bl_set(led, led->brightness);
 		break;
 	case PMIC8058_ID_LED_0:
-	case PMIC8058_ID_LED_1:
-	case PMIC8058_ID_LED_2:
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+		leds_diming_timer_check(led);
+		led->reg_led_ctrl[led->id - PMIC8058_ID_LED_0] = led->brightness;
+		if ( diming_set_state[led->id-PMIC8058_ID_LED_0]  == DIMMING_MODE_NOTACTIVE ) led_lc_set(led, led->brightness);
+		else leds_diming_timer_register(led);
+#else
 		led_lc_set(led, led->brightness);
+#endif
 		break;
+
+	case PMIC8058_ID_LED_1:
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+		leds_diming_timer_check(led);
+		led->reg_led_ctrl[led->id - PMIC8058_ID_LED_0] = led->brightness;
+		if ( diming_set_state[led->id-PMIC8058_ID_LED_0]  == DIMMING_MODE_NOTACTIVE ) led_lc_set(led, led->brightness);
+		else leds_diming_timer_register(led);
+#else
+		led_lc_set(led, led->brightness);
+#endif		
+		break;
+	case PMIC8058_ID_LED_2:
+#if defined(CONFIG_MACH_MSM8X60_EF65L)		
+		leds_diming_timer_check(led);
+		led->reg_led_ctrl[led->id - PMIC8058_ID_LED_0] = led->brightness;
+		if ( diming_set_state[led->id-PMIC8058_ID_LED_0]  == DIMMING_MODE_NOTACTIVE ) led_lc_set(led, led->brightness);
+		else leds_diming_timer_register(led);		
+#else
+		led_lc_set(led, led->brightness);
+#endif		
+		
+		break;		
 	case PMIC8058_ID_FLASH_LED_0:
 	case PMIC8058_ID_FLASH_LED_1:
 		led_flash_set(led, led->brightness);
@@ -273,11 +557,122 @@ static void pmic8058_led_work(struct work_struct *work)
 	mutex_unlock(&led->lock);
 }
 
+
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+static void pmic8058_timer_work(struct work_struct *work)
+{
+	struct pmic8058_led_data *led = 
+		container_of(work, struct pmic8058_led_data, led_work.work);
+//	static unsigned long flags;
+	int rc=0;
+	u8 tmp=0;
+	int diming_brightness[3];
+	mutex_lock(&led->lock);	
+	if(diming_set_state[0]==DIMMING_MODE_NOTACTIVE && diming_set_state[1]==DIMMING_MODE_NOTACTIVE &&diming_set_state[2]==DIMMING_MODE_NOTACTIVE )
+		goto error;
+
+	if ( diming_oper_mode == DIMMING_STATE_DARK ) --diming_timer_count;
+	
+	if ( diming_oper_mode == DIMMING_STATE_LIGHTUP ) ++diming_timer_count;	
+
+	// 	reach to max brightness, set to get-dark mode
+	if ( (diming_duration_time/DIMING_OPER_INTERVAL_TIME) < diming_timer_count ) {
+		diming_timer_count = diming_duration_time/DIMING_OPER_INTERVAL_TIME;
+		diming_oper_mode=DIMMING_STATE_DARK;
+	}
+
+	//	reach to zero, set to light up mode
+	if ( 0 > diming_timer_count ) {
+		diming_timer_count = 0;
+		diming_oper_mode = DIMMING_STATE_LIGHTUP;
+	}
+	
+	diming_brightness[0] = (diming_timer_count*DIMING_OPER_INTERVAL_TIME)*diming_end_value[0]/diming_duration_time;
+	diming_brightness[1] = (diming_timer_count*DIMING_OPER_INTERVAL_TIME)*diming_end_value[1]/diming_duration_time;
+	diming_brightness[2] = (diming_timer_count*DIMING_OPER_INTERVAL_TIME)*diming_end_value[2]/diming_duration_time;
+
+	dbg(" >> DIMING timer << cnt=%d, mode=%d [R:%d, %d][G:%d, %d][B:%d, %d]\n", 
+		diming_timer_count, diming_oper_mode,
+		diming_end_value[0], diming_brightness[0],
+		diming_end_value[1], diming_brightness[1],
+		diming_end_value[2], diming_brightness[2]);	
+	//	RED LED 
+	tmp = diming_brightness[0] << PM8058_DRV_LED_CTRL_SHIFT ;
+	
+	rc = pm8xxx_writeb(led->dev->parent,	SSBI_REG_ADDR_LED_CTRL(0), tmp);	
+	if (rc) {
+		dev_err(led->cdev.dev, "can't set (%d) led value\n", led->id);
+		return;
+	}
+
+	//	GREEN LED
+	tmp = diming_brightness[1] << PM8058_DRV_LED_CTRL_SHIFT ;
+
+	
+	rc = pm8xxx_writeb(led->dev->parent,	SSBI_REG_ADDR_LED_CTRL(1),	tmp);
+	if (rc) {
+		dev_err(led->cdev.dev, "can't set (%d) led value\n", led->id);
+		return;
+	}	
+
+	//	BLUE LED
+	tmp = diming_brightness[2] << PM8058_DRV_LED_CTRL_SHIFT ;
+	
+	rc = pm8xxx_writeb(led->dev->parent,	SSBI_REG_ADDR_LED_CTRL(2),	tmp);
+	if (rc) {
+		dev_err(led->cdev.dev, "can't set (%d) led value\n", led->id);
+		return;
+	}	
+
+	//	repeat timer 	
+	schedule_delayed_work(&led->led_work, 10);
+error:
+	mutex_unlock(&led->lock);
+	return ;
+}
+
+static void leds_diming_timer_check(struct pmic8058_led_data *led)
+{
+	
+	if ( (led->brightness & 0xF0) > 0 ) {
+		diming_end_value[led->id-PMIC8058_ID_LED_0] = led->brightness & ~PM8058_DRV_LED_CTRL_MASK;				
+		diming_set_state[led->id-PMIC8058_ID_LED_0] = DIMMING_MODE_READY; //p12911
+		diming_timer_count = 0;
+		diming_oper_mode = DIMMING_STATE_LIGHTUP;
+		diming_duration_time = DIMING_DATA_BASE_TIME +
+			((led->brightness & 0xF0) >> PM8058_DRV_LED_CTRL_SHIFT)*DIMING_DATA_RESOLUTION;
+	}
+	else
+	{
+		diming_set_state[led->id-PMIC8058_ID_LED_0] = DIMMING_MODE_NOTACTIVE;
+	}
+}
+
+static void leds_diming_timer_register(struct pmic8058_led_data *led)
+{	
+	dbg(" >> DIMING << [END VALUE] R=%d, G=%d, B=%d\n", diming_end_value[0], diming_end_value[1], diming_end_value[2]);
+	dbg(" >> DIMING << [STATE VALUE] R=%d, G=%d, B=%d\n", diming_set_state[0], diming_set_state[1], diming_set_state[2]);
+	if(diming_set_state[0]==DIMMING_MODE_ACTIVE || diming_set_state[1]==DIMMING_MODE_ACTIVE ||diming_set_state[2]==DIMMING_MODE_ACTIVE )
+	diming_set_state[led->id-PMIC8058_ID_LED_0] =DIMMING_MODE_ACTIVE;	
+	else
+	{
+	dbg(" >> DIMING << schdeule_delayed_work function call\n");		
+	schedule_delayed_work(&led->led_work, 10);
+	diming_set_state[led->id-PMIC8058_ID_LED_0] =DIMMING_MODE_ACTIVE;	
+	}
+}
+
+#endif
+
+/*========================================================*/
+
 static enum led_brightness pmic8058_led_get(struct led_classdev *led_cdev)
 {
 	struct pmic8058_led_data *led;
 
 	led = container_of(led_cdev, struct pmic8058_led_data, cdev);
+
+	dbg("pmic8058_led_get : %d\n", led->id);
 
 	switch (led->id) {
 	case PMIC8058_ID_LED_KB_LIGHT:
@@ -300,6 +695,7 @@ static int pmic8058_led_probe(struct platform_device *pdev)
 	u8			reg_led_ctrl[3];
 	u8			reg_flash_led0;
 	u8			reg_flash_led1;
+	dbg_func_in();
 
 	if (pdata == NULL) {
 		dev_err(&pdev->dev, "platform data not supplied\n");
@@ -342,7 +738,8 @@ static int pmic8058_led_probe(struct platform_device *pdev)
 		led_dat->cdev.brightness_set    = pmic8058_led_set;
 		led_dat->cdev.brightness_get    = pmic8058_led_get;
 		led_dat->cdev.brightness	= LED_OFF;
-		led_dat->cdev.max_brightness	= curr_led->max_brightness;
+		led_dat->cdev.max_brightness	= 255; //song add
+        //led_dat->cdev.max_brightness	= curr_led->max_brightness; //song del
 		led_dat->cdev.flags		= LED_CORE_SUSPENDRESUME;
 
 		led_dat->id		        = curr_led->id;
@@ -366,6 +763,13 @@ static int pmic8058_led_probe(struct platform_device *pdev)
 		spin_lock_init(&led_dat->value_lock);
 		INIT_WORK(&led_dat->work, pmic8058_led_work);
 
+#if defined(CONFIG_MACH_MSM8X60_EF65L)
+		diming_set_state[0] = DIMMING_MODE_NOTACTIVE;
+		diming_set_state[1] = DIMMING_MODE_NOTACTIVE;
+		diming_set_state[2] = DIMMING_MODE_NOTACTIVE;
+		INIT_DELAYED_WORK(&led_dat->led_work, pmic8058_timer_work);		
+#endif		
+
 		rc = led_classdev_register(&pdev->dev, &led_dat->cdev);
 		if (rc) {
 			dev_err(&pdev->dev, "unable to register led %d\n",
@@ -375,6 +779,12 @@ static int pmic8058_led_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, led_data);
+	// p12279 Added TestMenu
+	misc_register(&led_event);
+#ifdef CONFIG_USER_GPIO_CONTROL
+	misc_register(&user_gpio_event);
+#endif
+	dbg_func_out();
 
 	return 0;
 
