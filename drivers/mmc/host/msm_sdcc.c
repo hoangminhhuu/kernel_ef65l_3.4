@@ -74,7 +74,7 @@
 #define SPS_MIN_XFER_SIZE		MCI_FIFOSIZE
 
 #define MSM_MMC_BUS_VOTING_DELAY	200 /* msecs */
-
+#define CONFIG_PANTECH_WIFI_MMC
 #if defined(CONFIG_DEBUG_FS)
 static void msmsdcc_dbg_createhost(struct msmsdcc_host *);
 static struct dentry *debugfs_dir;
@@ -5433,6 +5433,18 @@ msmsdcc_probe(struct platform_device *pdev)
 		}
 	} else if (plat->register_status_notify) {
 		plat->register_status_notify(msmsdcc_status_notify_cb, host);
+#ifdef CONFIG_SKY_WLAN_MMC
+		if(!strcmp(mmc_hostname(mmc),"mmc3"))
+		{
+			mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;
+		}
+#elif defined (CONFIG_PANTECH_WIFI_MMC)	
+		//mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;	
+		if(!strcmp(mmc_hostname(mmc),"mmc3"))
+		{
+			mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;	
+		}
+#endif //CONFIG_SKY_WLAN
 	} else if (!plat->status)
 		pr_err("%s: No card detect facilities available\n",
 		       mmc_hostname(mmc));

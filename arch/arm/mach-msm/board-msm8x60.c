@@ -106,6 +106,10 @@
 #include "./qdsp6v2/sky_snd_ext_amp_max97001.h"
 #endif
 
+#ifdef CONFIG_WIFI_CONTROL_FUNC //platform device
+#include <linux/wlan_plat.h>
+#endif
+
 #include "peripheral-loader.h"
 #include <linux/platform_data/qcom_crypto_device.h>
 #include "rpm_resources.h"
@@ -4661,6 +4665,215 @@ static struct platform_device msm_tsens_device = {
 	.id = -1,
 };
 
+#ifdef CONFIG_SKY_WLAN
+static uint32_t wlan_on_gpio_cfgs[] = {
+	GPIO_CFG(107, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), 	/* WLAN_SHDN */
+//	GPIO_CFG(126, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	/* WLAN_HOST_WAKE */
+	GPIO_CFG(126, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),	/* WLAN_HOST_WAKE */
+
+};
+static uint32_t wlan_off_gpio_cfgs[] = {
+	GPIO_CFG(107, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), /* WLAN_SHDN */
+	GPIO_CFG(126, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),	  /* WLAN_HOST_WAKE */
+};
+
+static int wlan_power_state;
+int wlan_power(int on)
+{
+	int rc = 0;
+	int pin = 0;
+
+	printk(KERN_ERR "%s: %d\n",__func__, on);
+
+#ifdef CONFIG_WIFI_CONTROL_FUNC
+	if (on) {
+		for (pin = 0; pin < ARRAY_SIZE(wlan_on_gpio_cfgs); pin++) {
+			rc = gpio_tlmm_config(wlan_on_gpio_cfgs[pin], GPIO_CFG_ENABLE);
+			if (rc) {
+				printk(KERN_ERR "%s: gpio_tlmm_config(%#x)=%d\n",
+						__func__, wlan_on_gpio_cfgs[pin], rc);
+			}
+		}
+		mdelay(30);
+
+		gpio_set_value(107, on);
+
+		mdelay(40);
+
+		wlan_power_state = on;
+	} else {
+		mdelay(30);
+
+		gpio_set_value(107, on);
+
+		mdelay(40);
+
+		wlan_power_state = on;
+
+		for (pin = 0; pin < ARRAY_SIZE(wlan_off_gpio_cfgs); pin++) {
+			rc = gpio_tlmm_config(wlan_off_gpio_cfgs[pin], GPIO_CFG_ENABLE);
+			if (rc) {
+				printk(KERN_ERR "%s: gpio_tlmm_config(%#x)=%d\n",
+						__func__, wlan_off_gpio_cfgs[pin], rc);
+			}
+		}
+	}
+#endif  //CONFIG_WIFI_CONTROL_FUNC
+	return rc;
+}
+#ifdef CONFIG_WIFI_MEM_PREALLOC
+#define PREALLOC_WLAN_NUMBER_OF_SECTIONS	4
+#define PREALLOC_WLAN_NUMBER_OF_BUFFERS		160
+#define PREALLOC_WLAN_SECTION_HEADER		24
+
+#define WLAN_SECTION_SIZE_0	(PREALLOC_WLAN_NUMBER_OF_BUFFERS * 128)
+#define WLAN_SECTION_SIZE_1	(PREALLOC_WLAN_NUMBER_OF_BUFFERS * 128)
+#define WLAN_SECTION_SIZE_2	(PREALLOC_WLAN_NUMBER_OF_BUFFERS * 512)
+#define WLAN_SECTION_SIZE_3	(PREALLOC_WLAN_NUMBER_OF_BUFFERS * 1024)
+
+#define WLAN_SKB_BUF_NUM	16
+
+static struct sk_buff *wlan_static_skb[WLAN_SKB_BUF_NUM];
+
+typedef struct wifi_mem_prealloc_struct {
+	void *mem_ptr;
+	unsigned long size;
+} wifi_mem_prealloc_t;
+
+static wifi_mem_prealloc_t wifi_mem_array[PREALLOC_WLAN_NUMBER_OF_SECTIONS] = {
+	{ NULL, (WLAN_SECTION_SIZE_0 + PREALLOC_WLAN_SECTION_HEADER) },
+	{ NULL, (WLAN_SECTION_SIZE_1 + PREALLOC_WLAN_SECTION_HEADER) },
+	{ NULL, (WLAN_SECTION_SIZE_2 + PREALLOC_WLAN_SECTION_HEADER) },
+	{ NULL, (WLAN_SECTION_SIZE_3 + PREALLOC_WLAN_SECTION_HEADER) }
+};
+
+void *wifi_mem_prealloc(int section, unsigned long size)
+{
+	if (section == PREALLOC_WLAN_NUMBER_OF_SECTIONS)
+		return wlan_static_skb;
+	if ((section < 0) || (section > PREALLOC_WLAN_NUMBER_OF_SECTIONS))
+		return NULL;
+	if (wifi_mem_array[section].size < size)
+		return NULL;
+	return wifi_mem_array[section].mem_ptr;
+}
+EXPORT_SYMBOL(wifi_mem_prealloc);
+
+static int init_wifi_mem(void)
+{
+	int i;
+
+	for(i=0;( i < WLAN_SKB_BUF_NUM );i++) {
+		if (i < (WLAN_SKB_BUF_NUM/2))
+			wlan_static_skb[i] = dev_alloc_skb(4096);
+		else
+			wlan_static_skb[i] = dev_alloc_skb(8192);
+	}
+	for(i=0;( i < PREALLOC_WLAN_NUMBER_OF_SECTIONS );i++) {
+		wifi_mem_array[i].mem_ptr = kmalloc(wifi_mem_array[i].size,
+				GFP_KERNEL);
+		if (wifi_mem_array[i].mem_ptr == NULL)
+			return -ENOMEM;
+	}
+	return 0;
+}
+#endif //CONFIG_WIFI_MEM_PREALLOC
+
+#ifdef CONFIG_WIFI_CONTROL_FUNC
+static int wlan_reset_state;
+static int wlan_cd = 0; /* WIFI virtual 'card detect' status */
+static void (*wlan_status_cb)(int card_present, void *dev_id);
+static void *wlan_status_cb_devid;
+
+/* BCM4329 returns wrong sdio_vsn(1) when we read cccr,
+ * we use predefined value (sdio_vsn=2) here to initial sdio driver well
+ */
+static struct embedded_sdio_data wlan_emb_data = {
+	.cccr	= {
+		.sdio_vsn	= 2,
+		.multi_block	= 1,
+		.low_speed	= 0,
+		.wide_bus	= 0,
+		.high_power	= 1,
+		.high_speed	= 1,
+	},
+};
+
+int wlan_reset(int on)
+{
+	printk("%s: do nothing\n", __func__);
+	wlan_reset_state = on;
+	return 0;
+}
+
+static int wlan_status_register(
+			void (*callback)(int card_present, void *dev_id),
+			void *dev_id)
+{
+	if (wlan_status_cb)
+		return -EINVAL;
+	wlan_status_cb = callback;
+	wlan_status_cb_devid = dev_id;
+	return 0;
+}
+
+static unsigned int wlan_status(struct device *dev)
+{
+	return wlan_cd;
+}
+
+int wlan_set_carddetect(int val)
+{
+	printk(KERN_ERR"%s: %d\n", __func__, val);
+	wlan_cd = val;
+	if (wlan_status_cb) {
+		wlan_status_cb(val, wlan_status_cb_devid);
+	} else
+		printk(KERN_ERR"%s: Nobody to notify\n", __func__);
+	return 0;
+}
+
+static struct resource wlan_resources[] = {
+	[0] = {
+		.name	= "bcmdhd_wlan_irq",
+		.start	= MSM_GPIO_TO_INT(126),
+		.end		= MSM_GPIO_TO_INT(126),
+		.flags      = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL,//IORESOURCE_IRQ_LOWLEVEL, //IORESOURCE_IRQ_LOWEDGE,
+	},
+};
+
+static struct wifi_platform_data  wlan_control = {
+	.set_power	= wlan_power,
+	.set_reset	= wlan_reset,
+	.set_carddetect = wlan_set_carddetect,
+	.mem_prealloc = wifi_mem_prealloc,
+};
+
+static struct platform_device wlan_device = {
+		.name		= "bcmdhd_wlan",
+		.id             	= 1,
+		.num_resources = ARRAY_SIZE(wlan_resources),
+		.resource		= wlan_resources,
+		.dev			= {
+			.platform_data = &wlan_control,
+		},
+	};
+#endif //CONFIG_WIFI_CONTROL_FUNC
+
+static void msm8x60_wlan_init(void)
+{
+	int rc = 0;
+	wlan_power(0);
+
+#ifdef CONFIG_WIFI_MEM_PREALLOC
+	rc = init_wifi_mem();
+	if (rc != 0){
+		printk(KERN_ERR "%s: init_wifi_mem_return val: %d \n", __func__, rc);
+	}
+#endif //CONFIG_WIFI_MEM_PREALLOC
+}
+#endif  //CONFIG_SKY_WLAN
+
 static struct platform_device *rumi_sim_devices[] __initdata = {
 	&smc91x_device,
 	&msm_device_uart_dm12,
@@ -5852,6 +6065,9 @@ static struct platform_device *surf_devices[] __initdata = {
 	&ion_dev,
 #endif
 	&msm8660_device_watchdog,
+#ifdef CONFIG_WIFI_CONTROL_FUNC
+	&wlan_device,
+#endif
 	&msm_device_tz_log,
 	&msm_rtb_device,
 	&msm8660_iommu_domain_device,
@@ -9088,13 +9304,21 @@ static struct mmc_platform_data msm8x60_sdc3_data = {
 static struct mmc_platform_data msm8x60_sdc4_data = {
 	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
 	.translate_vdd  = msm_sdcc_setup_power,
+#ifdef CONFIG_WIFI_CONTROL_FUNC
+	.status				= wlan_status,
+	.register_status_notify	= wlan_status_register,
+	.embedded_sdio		= &wlan_emb_data,
+#endif	
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
 	.msmsdcc_fmin	= 400000,
 	.msmsdcc_fmid	= 24000000,
 	.msmsdcc_fmax	= 48000000,
 	.nonremovable	= 0,
+#ifndef CONFIG_SKY_WLAN	
+	//.cfg_mpm_sdiowakeup = msm_sdcc_cfg_mpm_sdiowakeup,
 	.mpm_sdiowakeup_int = MSM_MPM_PIN_SDC4_DAT1,
 	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
+#endif	
 };
 #endif
 
@@ -11289,6 +11513,9 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 #endif // CONFIG_PANTECH_BT
 
 #endif
+#ifdef CONFIG_WIFI_CONTROL_FUNC
+	msm8x60_wlan_init();
+#endif //CONFIG_WIFI_CONTROL_FUNC
 
 	msm8x60_multi_sdio_init();
 
