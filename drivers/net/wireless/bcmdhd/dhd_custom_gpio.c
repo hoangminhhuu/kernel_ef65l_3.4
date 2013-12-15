@@ -168,6 +168,70 @@ dhd_customer_gpio_wlan_ctrl(int onoff)
 }
 
 #ifdef GET_CUSTOM_MAC_ENABLE
+#ifdef CONFIG_PANMAC // PZ2224_yikyu 20120508
+static int
+dhd_read_mac_from_file(char *fpath, struct ether_addr *addr)
+{
+	void *fp = NULL;
+	int len;
+	int ret = -1;
+	char ethbuf[32] = {0, };
+	struct ether_addr tmp;
+
+	if ( !fpath || !addr )
+		return -1;
+
+	if ((fp = dhd_os_open_image(fpath)) == NULL)
+		return -1;
+
+	len = dhd_os_get_image_block(ethbuf, 32, fp);
+	if ( len < 17 ) /* mac address format xx:xx:xx:xx:xx:xx */
+		goto err;
+
+	ethbuf[17] = '\0';
+	if (sscanf(ethbuf, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+			&tmp.octet[0], &tmp.octet[1], &tmp.octet[2],
+			&tmp.octet[3], &tmp.octet[4], &tmp.octet[5]) != 6)
+		goto err;
+
+	memcpy(addr, &tmp, sizeof(struct ether_addr));
+
+	ret = 0;
+err:
+	dhd_os_close_image(fp);
+	return ret;
+}
+
+static int
+dhd_write_mac_to_file(char *fpath, struct ether_addr *addr)
+{
+	struct file *fp = NULL;
+	char ethbuf[32] = {0, };
+	mm_segment_t old_fs;
+	loff_t pos;
+
+	if ( !fpath || !addr )
+		return -1;
+
+	fp = filp_open(fpath, O_CREAT | O_RDWR, 0666);
+	if (IS_ERR(fp))
+		return -1;
+
+	sprintf(ethbuf, "%02x:%02x:%02x:%02x:%02x:%02x",
+			addr->octet[0], addr->octet[1], addr->octet[2],
+			addr->octet[3], addr->octet[4], addr->octet[5]);
+
+	old_fs = get_fs();
+	set_fs(get_ds());
+	pos = fp->f_pos;
+	vfs_write(fp, ethbuf, 18, &pos);
+	set_fs(old_fs);
+
+	filp_close(fp, NULL);
+
+	return 0;
+}
+#endif
 /* Function to get custom MAC address */
 int
 dhd_custom_get_mac_address(unsigned char *buf)
@@ -188,6 +252,52 @@ dhd_custom_get_mac_address(unsigned char *buf)
 	{
 		struct ether_addr ea_example = {{0x00, 0x11, 0x22, 0x33, 0x44, 0xFF}};
 		bcopy((char *)&ea_example, buf, sizeof(struct ether_addr));
+	}
+#endif /* EXAMPLE_GET_MAC */
+
+#ifdef CONFIG_PANMAC // PZ2224_yikyu 20120508
+	{
+		char panmac_path[] = "/dev/panmac";
+		static struct ether_addr mac;
+		static int custom_mac_applied = 0;
+
+		if ( custom_mac_applied )
+		{
+			memcpy(buf, &mac, sizeof(struct ether_addr));
+			return 0;
+		}
+
+		ret = dhd_read_mac_from_file(panmac_path, &mac);
+
+		if ( ret == 0 )
+		{
+			memcpy(buf, &mac, sizeof(struct ether_addr));
+			custom_mac_applied = 1;
+		}
+		else
+		{
+			int i;
+			char rand_panmac_path[] = "/data/misc/wifi/panmac";
+
+#if 0
+			ret = dhd_read_mac_from_file(rand_panmac_path, &mac);
+#endif
+			if ( ret != 0 )
+			{
+				mac.octet[0] = 0x00;
+				mac.octet[1] = 0x0f;
+				mac.octet[2] = 0xe4;
+				for ( i = 3; i < ETHER_ADDR_LEN; i++ )
+					get_random_bytes(&mac.octet[i], 1);
+
+				dhd_write_mac_to_file(rand_panmac_path, &mac);
+			}
+			memcpy(buf, &mac, sizeof(struct ether_addr));
+#if 0
+			custom_mac_applied = 1;
+#endif
+			ret = 0;
+		}
 	}
 #endif /* EXAMPLE_GET_MAC */
 
